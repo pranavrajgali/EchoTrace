@@ -1,0 +1,1 @@
+#used to break down our .wav data in spectrogram for cnn 
