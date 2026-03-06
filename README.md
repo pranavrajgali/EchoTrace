@@ -29,6 +29,13 @@ The EchoTrace model has been **rigorously tested** on both controlled lab datase
 - **Samples evaluated**: 4,000 (lab) + 2,000 (real-world)
 - Exceptional generalization on degraded / compressed audio
 
+# Highest-Accuracy Reporting (Recommended for Forensics) 🧪
+
+For the **most reliable Grad-CAM extraction** and **forensic-grade PDF output**, use the dedicated script:
+
+```bash
+python tests/single_example_report_generator.py
+
 ## 📦 Prerequisites
 
 - Python 3.9 or higher
@@ -48,3 +55,4 @@ source venv/bin/activate          # Linux / macOS
 
 # Install dependencies
 pip install -r requirements.txt
+
