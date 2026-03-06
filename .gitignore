@@ -5,8 +5,8 @@ __pycache__/
 .env
 venv/
 .env.*
-*.pth
-*.pt
+#*.pth
+#*.pt
 *.ckpt
 *.h5
 .DS_Store
