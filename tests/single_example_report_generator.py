@@ -92,10 +92,15 @@ def generate_forensic_report(audio_path, model_path="../deepfake_detector.pth"):
              bbox=dict(facecolor=v_color, alpha=0.15, edgecolor=v_color, boxstyle='round,pad=1.5'))
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
+
+    # Save the report
+    output_dir = os.path.join(root_path, "reports")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     report_name = f"Report_{os.path.basename(audio_path)}.png"
-    plt.savefig(report_name, facecolor=fig.get_facecolor(), dpi=300)
-    print(f"✅ Report saved: {report_name}")
+    save_path = os.path.join(output_dir, report_name)
+    plt.savefig(save_path, facecolor=fig.get_facecolor(), dpi=300)
+    print(f"✅ Report saved to: {save_path}")
     plt.show()
 
 if __name__ == "__main__":
