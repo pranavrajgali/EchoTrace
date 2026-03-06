@@ -10,3 +10,5 @@ venv/
 *.ckpt
 *.h5
 .DS_Store
+data/
+deepfake/

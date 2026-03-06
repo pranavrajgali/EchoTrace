@@ -1,0 +1,30 @@
+Using MPS device (Apple Silicon)
+Loading datasets...
+Dataset loaded: 8000 samples, batch_size=32, workers=0
+Mixed precision training: Disabled
+Starting training for 10 epochs...
+Traceback (most recent call last):
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/train.py", line 133, in <module>
+    main()
+    ~~~~^^
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/train.py", line 80, in main
+    for batch_idx, (specs, labels) in enumerate(train_loader):
+                                      ~~~~~~~~~^^^^^^^^^^^^^^
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/deepfake/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 741, in __next__
+    data = self._next_data()
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/deepfake/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 801, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/deepfake/lib/python3.13/site-packages/torch/utils/data/_utils/fetch.py", line 54, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+            ~~~~~~~~~~~~^^^^^
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/preprocess.py", line 493, in __getitem__
+    return self.asv_dataset[asv_idx]
+           ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/preprocess.py", line 355, in __getitem__
+    audio = self.augmenter.apply_augmentations(audio)
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/preprocess.py", line 215, in apply_augmentations
+    augmented_audio = aug(augmented_audio)
+  File "/Users/abhinavmucharla/Desktop/coding/udbhav2026/deepfake_audio_detection/core/preprocess.py", line 201, in <lambda>
+    lambda x: self.add_clipping(x),
+              ^^^^^^^^^^^^^^^^^
+AttributeError: 'AudioAugmenter' object has no attribute 'add_clipping'
