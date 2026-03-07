@@ -47,7 +47,7 @@ python tests/single_example_report_generator.py
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/EchoTrace-Backend.git
+git clone https://github.com/CRRAO-Internal-Hackathon-2026/BackProp-Bandits.git
 cd EchoTrace-Backend
 
 # Create and activate virtual environment
@@ -57,6 +57,7 @@ source venv/bin/activate          # Linux / macOS
 
 # Install dependencies
 pip install -r requirements.txt
+
 
 
 
