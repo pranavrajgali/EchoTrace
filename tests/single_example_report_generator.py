@@ -28,9 +28,20 @@ if core_path not in sys.path:
 from core.model import build_model
 from core.inference import run_inference
 
+ALLOWED_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg'}
+
 def generate_forensic_report(audio_path, model_path="../deepfake_detector.pth"):
     # Resolve the model path relative to this script
     model_abs_path = os.path.abspath(os.path.join(os.path.dirname(__file__), model_path))
+    
+    # Validate file extension
+    file_ext = os.path.splitext(audio_path)[1].lower()
+    
+    if file_ext not in ALLOWED_EXTENSIONS:
+        print(f"\n🛑 ERROR: Unsupported File Format ({file_ext})")
+        print(f"Please use one of the following primary formats: {', '.join(ALLOWED_EXTENSIONS).upper()}")
+        print("Inference aborted to prevent spectral distortion or processing errors.\n")
+        return
     
     # Setup Device
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
