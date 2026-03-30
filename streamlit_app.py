@@ -508,13 +508,17 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
         </p>
     ''', unsafe_allow_html=True)
 
-    with ctx:
-        with st.spinner("Running sliding-window inference…"):
-            try:
-                points = compute_confidence_timeline(audio_bytes, model_path)
-            except Exception as e:
-                ctx.error(f"Timeline error: {e}")
-                return
+    _spin = ctx.empty()
+    _spin.markdown('''<p style="font-family:Space Mono,monospace;font-size:0.68rem;
+        color:#5A5A5E;letter-spacing:0.1em;text-align:center;">
+        Running sliding-window inference…</p>''', unsafe_allow_html=True)
+    try:
+        points = compute_confidence_timeline(audio_bytes, model_path)
+    except Exception as e:
+        ctx.error(f"Timeline error: {e}")
+        _spin.empty()
+        return
+    _spin.empty()
 
     times  = [p[0] for p in points]
     confs  = [p[1] * 100 for p in points]   # as percentage
@@ -576,7 +580,7 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
         paper_bgcolor="#0A0A0B",
         plot_bgcolor="#111113",
         margin=dict(l=10, r=10, t=10, b=10),
-        height=240,
+        height=300,
         xaxis=dict(
             title="Time (seconds)",
             title_font=dict(color="#5A5A5E", size=10, family="Space Mono"),
@@ -591,7 +595,7 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
             tickfont=dict(color="#5A5A5E", size=9, family="Space Mono"),
             gridcolor="#1E1E20",
             zerolinecolor="#1E1E20",
-            range=[0, 100],
+            range=[-2, 108],
             showgrid=True,
         ),
         showlegend=False,
@@ -694,8 +698,9 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
                 </div>
             """, unsafe_allow_html=True)
 
-            # Confidence Timeline
-            render_confidence_timeline(audio_bytes, model_weight_path, ctx)
+            # Confidence Timeline — wrap in ctx to guarantee column scope
+            with ctx:
+                render_confidence_timeline(audio_bytes, model_weight_path, ctx)
 
             ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Report</div>', unsafe_allow_html=True)
             ctx.image(str(report_path), use_container_width=True)
@@ -787,6 +792,48 @@ with col:
                     <source src="data:{mime};base64,{b64}" type="{mime}">
                 </audio>
             ''', unsafe_allow_html=True)
+
+            # Static waveform for uploaded file
+            st.markdown('<div class="section-label" style="margin-top:1rem">Waveform</div>', unsafe_allow_html=True)
+            try:
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+
+                seg_wf = AudioSegment.from_file(io.BytesIO(file_bytes), format=suffix.strip("."))
+                samples_wf = np.array(seg_wf.get_array_of_samples(), dtype=np.float32)
+                if seg_wf.channels == 2:
+                    samples_wf = samples_wf[::2]
+                samples_wf /= float(2 ** (seg_wf.sample_width * 8 - 1))
+
+                target_pts = 1200
+                step_wf = max(1, len(samples_wf) // target_pts)
+                display_wf = samples_wf[::step_wf]
+                duration_wf = len(seg_wf) / 1000.0
+                times_wf = np.linspace(0, duration_wf, len(display_wf))
+
+                fig_wf, ax_wf = plt.subplots(figsize=(8, 1.6))
+                fig_wf.patch.set_facecolor('#111113')
+                ax_wf.set_facecolor('#111113')
+                ax_wf.fill_between(times_wf, display_wf, alpha=0.25, color='#E8443A')
+                ax_wf.plot(times_wf, display_wf, color='#E8443A', linewidth=0.8, alpha=0.9)
+                ax_wf.axhline(0, color='#2A2A2E', linewidth=0.5)
+                ax_wf.set_xlim(0, duration_wf)
+                ax_wf.set_ylim(-1.05, 1.05)
+                ax_wf.tick_params(colors='#3A3A3E', labelsize=7)
+                for spine in ax_wf.spines.values():
+                    spine.set_edgecolor('#1E1E20')
+                ax_wf.set_xlabel('seconds', color='#3A3A3E', fontsize=7)
+                fig_wf.tight_layout(pad=0.4)
+
+                wf_buf = io.BytesIO()
+                fig_wf.savefig(wf_buf, format='png', dpi=120, bbox_inches='tight',
+                               facecolor='#111113', edgecolor='none')
+                plt.close(fig_wf)
+                wf_buf.seek(0)
+                st.image(wf_buf, use_container_width=True)
+            except Exception as e:
+                st.caption(f"Waveform unavailable: {e}")
 
             if st.button("⬡  Run Forensic Analysis", key="btn_upload"):
                 try:
@@ -1039,6 +1086,6 @@ with col:
 # ─── FOOTER ──────────────────────────────────────────────────
 st.markdown("""
     <div class="footer-wrap">
-        <div class="footer-text">EchoTrace Deepfake Detection · v3.0 · Built on Windows</div>
+        <div class="footer-text">EchoTrace Deepfake Detection · v3.0 · Built by the BackProp Bandits</div>
     </div>
 """, unsafe_allow_html=True)
