@@ -11,28 +11,22 @@ from torch.utils.data import DataLoader
 from torch.amp import GradScaler, autocast
 
 # Import your custom modules
-from core.model import EchoTraceResNet, warm_start_new_pipeline, build_model
+from core.model import EchoTraceResNet, build_model, get_loss, get_optimizer
 from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, MultiDataset
 
 # --- Configuration ---
-WORLD_SIZE = 4
-BATCH_SIZE_PER_GPU = 8  # 8 * 4 = 32 effective batch size
-EPOCHS = 10
-CHECKPOINT_PATH = 'deepfake_detector.pth'
-# Update WORLD_SIZE to handle actual GPU count
 WORLD_SIZE = min(4, torch.cuda.device_count())
+assert WORLD_SIZE > 0, "No CUDA GPUs found"
 
 # Dataset Directories
+ASV_PROTOCOL = "../data/ASVspoof2019/LA/ASVspoof2019.LA.cm.train.trn.txt"
 ASV_DIR = "../data/ASVspoof2019/LA/flac/"
 WAVEFAKE_DIR = "../data/wavefake-test/"
 ITW_DIR = "../data/release_in_the_wild/"
-CHECKPOINT_PATH = "deepfake_detector.pth"
 
 # Training Hyper-parameters
 BATCH_SIZE_PER_GPU = 16
 NUM_EPOCHS = 10
-LR_BACKBONE = 1e-6 # Layers 3-4
-LR_HEAD = 1e-4     # New FC Head
 SAVE_DIR = 'checkpoints'
 
 def setup_ddp(rank, world_size):
@@ -53,9 +47,9 @@ def cleanup_ddp():
 
 def get_dataloaders(rank, world_size):
     print(f"[*] Rank {rank}: Initializing Datasets...")
-    asv_data = ASVDataset(ASV_DIR)
-    wavefake_data = WaveFakeDataset(WAVEFAKE_DIR)
-    itw_data = InTheWildDataset(ITW_DIR)
+    asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, subset_size=None, augment=True, augment_prob=0.3)
+    wavefake_data = WaveFakeDataset(WAVEFAKE_DIR, subset_size=None, augment=True, augment_prob=0.3)
+    itw_data = InTheWildDataset(ITW_DIR, subset_size=None, augment=True, augment_prob=0.3)
     
     train_dataset = MultiDataset(asv_data, wavefake_data, itw_data)
     sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
@@ -73,33 +67,36 @@ def get_dataloaders(rank, world_size):
 def train(rank, world_size):
     setup_ddp(rank, world_size)
     torch.manual_seed(42)
-    device = rank
+    device = torch.device(f"cuda:{rank}")
     
-    model = EchoTraceResNet()
-    if os.path.exists(CHECKPOINT_PATH):
-        if rank == 0:
-            print(f"[*] Warm starting from {CHECKPOINT_PATH}")
-        model = warm_start_new_pipeline(model, CHECKPOINT_PATH, device)
+    # Build model with ImageNet weights and explicit layer freezing
+    model = build_model(device)
     
-    # --- Strategy 2: Differential Unfreezing ---
-    # Layers 1 & 2 remain frozen (default from ImageNet init)
+    # Belt-and-suspenders: explicitly freeze layer1 and layer2 again
+    for param in model.resnet.layer1.parameters():
+        param.requires_grad = False
+    for param in model.resnet.layer2.parameters():
+        param.requires_grad = False
+    
+    # First, freeze ALL parameters
+    for param in model.resnet.parameters():
+        param.requires_grad = False
+    
+    # Then selectively unfreeze layer3, layer4, and fc head
     for param in model.resnet.layer3.parameters():
         param.requires_grad = True
     for param in model.resnet.layer4.parameters():
         param.requires_grad = True
     for param in model.fc.parameters():
         param.requires_grad = True
-        
+    
+    # Wrap with DDP
     model = DDP(model, device_ids=[rank])
     
-    # Optimizer with differential learning rates
-    optimizer = torch.optim.AdamW([
-        {'params': model.module.resnet.layer3.parameters(), 'lr': LR_BACKBONE},
-        {'params': model.module.resnet.layer4.parameters(), 'lr': LR_BACKBONE},
-        {'params': model.module.fc.parameters(), 'lr': LR_HEAD}
-    ])
+    # Get loss and optimizer from model functions
+    criterion = get_loss()
+    optimizer = get_optimizer(model.module)
     
-    criterion = nn.BCEWithLogitsLoss()  # Binary classification loss
     scaler = torch.amp.GradScaler("cuda")
     loader, sampler = get_dataloaders(rank, world_size)
     
@@ -111,17 +108,16 @@ def train(rank, world_size):
     for epoch in range(NUM_EPOCHS):
         sampler.set_epoch(epoch)
         model.train()
-        epoch_loss = 0.0  # Initialize epoch loss accumulator
-        epoch_start_time = time.time()  # Track epoch timing
+        epoch_loss = 0.0
+        epoch_start_time = time.time()
         
-        # Warmup Check for first epoch
         if epoch == 0 and rank == 0:
-            print(f"[Epoch 0] Warmup active: Layer 3 LR set to {LR_BACKBONE}")
+            print(f"[Epoch 0] Training from scratch with ImageNet backbone + new FC head")
             
         for batch_idx, (images, scalars, labels) in enumerate(loader):
             images = images.to(device)
             scalars = scalars.to(device)
-            labels = labels.float().unsqueeze(1).to(device)  # Binary target: (batch, 1)
+            labels = labels.float().unsqueeze(1).to(device)
             
             optimizer.zero_grad()
             
@@ -129,38 +125,29 @@ def train(rank, world_size):
                 outputs = model(images, scalars)
                 loss = criterion(outputs, labels)
 
-            # Scaled Backward Pass
             scaler.scale(loss).backward()
-
-            # Unscale before clipping
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-            # Optimizer step & Scaler update
             scaler.step(optimizer)
             scaler.update()
 
             epoch_loss += loss.item()
 
-            # Logging on Master Node (Rank 0)
             if rank == 0 and batch_idx % 50 == 0:
                 print(f"Epoch [{epoch}/{NUM_EPOCHS-1}] | Batch [{batch_idx}/{len(loader)}] | Loss: {loss.item():.4f}")
 
-        # --- Epoch Conclusion & Checkpointing ---
         if rank == 0:
             avg_loss = epoch_loss / len(loader)
             epoch_elapsed = (time.time() - epoch_start_time) / 60
             print(f"=== Epoch {epoch} Complete | Avg Loss: {avg_loss:.4f} | Time: {epoch_elapsed:.2f} min ===")
             
-            # Save Checkpoint
             save_path = os.path.join(SAVE_DIR, f"ensemble_epoch_{epoch}.pth")
             torch.save(model.module.state_dict(), save_path)
-            
-            # Keep latest as ensemble_model.pth
             torch.save(model.module.state_dict(), "ensemble_model.pth")
             print(f"[*] Saved checkpoint to {save_path}")
 
     cleanup_ddp()
+
 
 if __name__ == "__main__":
     try:

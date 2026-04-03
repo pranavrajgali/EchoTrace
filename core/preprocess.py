@@ -4,9 +4,11 @@ import librosa
 import numpy as np
 import random
 import glob
+import csv
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 from PIL import Image
+
 
 class AudioAugmenter:
     """
@@ -111,7 +113,7 @@ def load_audio_multiformat(file_path, target_sr=16000, duration=4.0):
 
 class ASVDataset(Dataset):
     """Dataset class for ASVspoof 2019 LA files."""
-    def __init__(self, protocol_file, data_dir, subset_size=None, augment=False):
+    def __init__(self, protocol_file, data_dir, subset_size=None, augment=False, augment_prob=0.3):
         self.data_dir = data_dir
         self.files, self.labels = [], []
         self.transform = transforms.Compose([
@@ -119,17 +121,19 @@ class ASVDataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         self.augment = augment
-        self.augmenter = AudioAugmenter() if augment else None
+        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
 
         with open(protocol_file, 'r') as f:
             lines = f.readlines()
-            if subset_size: lines = lines[:subset_size]
+            if subset_size:
+                lines = lines[:subset_size]
             for line in lines:
                 parts = line.strip().split()
                 self.files.append(parts[1])
                 self.labels.append(0 if parts[4] == 'bonafide' else 1)
 
-    def __len__(self): return len(self.files)
+    def __len__(self):
+        return len(self.files)
 
     def __getitem__(self, idx):
         path = os.path.join(self.data_dir, self.files[idx] + ".flac")
@@ -137,88 +141,42 @@ class ASVDataset(Dataset):
         # Mandatory Peak Normalization
         audio = audio / (np.max(np.abs(audio)) + 1e-9)
         
-        if self.augment: audio = self.augmenter.apply_augmentations(audio)
+        if self.augment:
+            audio = self.augmenter.apply_augmentations(audio)
         
         img = Image.fromarray(build_feature_image(audio))
         scalars = extract_scalar_features(audio)
-        return self.transform(img), torch.tensor(scalars), self.labels[idx]
+        return self.transform(img), torch.tensor(scalars, dtype=torch.float32), self.labels[idx]
 
 class WaveFakeDataset(Dataset):
     """
     Targeted dataset for modern neural vocoders (HiFi-GAN, MelGAN, etc.).
     All folders in 'generated_audio' are treated as FAKE.
     """
-    def __init__(self, data_dir, subset_size=None):
+    def __init__(self, data_dir, subset_size=None, augment=False, augment_prob=0.3):
         self.data_dir = data_dir
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
+        self.augment = augment
+        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
         
         # Real: LJSpeech-1.1 wavs + JSUT original Japanese speech
         self.real_files = glob.glob(os.path.join(data_dir, "the-LJSpeech-1.1/wavs/*.wav"))
         self.real_files += glob.glob(os.path.join(data_dir, "jsut_ver1.1/**/*.wav"), recursive=True)
+        
         # Fake: All recursive wavs in generated_audio
         self.fake_files = glob.glob(os.path.join(data_dir, "generated_audio/**/*.wav"), recursive=True)
         
         if subset_size:
             random.shuffle(self.real_files)
             random.shuffle(self.fake_files)
-            self.real_files = self.real_files[:subset_size//2]
-            self.fake_files = self.fake_files[:subset_size//2]
+            self.real_files = self.real_files[:subset_size // 2]
+            self.fake_files = self.fake_files[:subset_size // 2]
         
-        self.all_files = self.real_files + self.fake_files
-        self.labels = [0]*len(self.real_files) + [1]*len(self.fake_files)
-
-    def __len__(self): return len(self.all_files)
-
-    """
-    ASVspoof 2019 LA Dataset.
-    """
-    def __init__(self, data_dir, subset_size=None, augment=False, augment_prob=0.3):
-        self.data_dir = data_dir
-        self.all_files = glob.glob(os.path.join(data_dir, "*.flac"))
-        
-        # Simplified: Label derived from filename or protocol if available
-        # For training, we assume files contain identity in name or use a default
-        self.labels = [1 if "spoof" in f.lower() else 0 for f in self.all_files]
-        
-        if subset_size and subset_size < len(self.all_files):
-            self.all_files = self.all_files[:subset_size]
-            self.labels = self.labels[:subset_size]
-            
-        print(f"[+] ASV Loaded: {len(self.all_files)} samples")
-
-    def __len__(self):
-        return len(self.all_files)
-
-    def __getitem__(self, idx):
-        file_path = self.all_files[idx]
-        label = self.labels[idx]
-        try:
-            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
-            img, scalars = feature_engineer(audio, sr)
-            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
-        except:
-            return self.__getitem__(np.random.randint(0, len(self.all_files)))
-
-class WaveFakeDataset(Dataset):
-    """
-    Handles WaveFake dataset balancing LJSpeech/JSUT (Real) against generated folders.
-    """
-    def __init__(self, data_dir, subset_size=None):
-        self.data_dir = data_dir
-        self.real_files = glob.glob(os.path.join(data_dir, "the-LJSpeech-1.1/wavs/*.wav"))
-        self.real_files += glob.glob(os.path.join(data_dir, "jsut_ver1.1/basic5000/wav/*.wav"))
-        self.fake_files = glob.glob(os.path.join(data_dir, "generated_audio/*/*.wav"))
-        
-        if subset_size:
-            self.real_files = self.real_files[:subset_size//2]
-            self.fake_files = self.fake_files[:subset_size//2]
-            
         self.all_files = self.real_files + self.fake_files
         self.labels = [0] * len(self.real_files) + [1] * len(self.fake_files)
-        print(f"[+] WaveFake Loaded: {len(self.all_files)} samples")
 
     def __len__(self):
         return len(self.all_files)
@@ -226,29 +184,73 @@ class WaveFakeDataset(Dataset):
     def __getitem__(self, idx):
         file_path = self.all_files[idx]
         label = self.labels[idx]
-        try:
-            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
-            img, scalars = feature_engineer(audio, sr)
-            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
-        except:
-            return self.__getitem__(np.random.randint(0, len(self.all_files)))
+        
+        audio = load_audio_multiformat(file_path)
+        audio = audio / (np.max(np.abs(audio)) + 1e-9)
+        
+        if self.augment:
+            audio = self.augmenter.apply_augmentations(audio)
+        
+        img = Image.fromarray(build_feature_image(audio))
+        scalars = extract_scalar_features(audio)
+        return self.transform(img), torch.tensor(scalars, dtype=torch.float32), label
+
 
 class InTheWildDataset(Dataset):
     """
-    Handles the 'In-The-Wild' dataset with flat folder structure.
+    Handles the 'In-The-Wild' dataset.
+    Globs all .wav files, reads meta.csv (columns: file, label) to split into real/fake.
+    Falls back to filename heuristics if no CSV exists.
     """
-    def __init__(self, data_dir, subset_size=None):
+    def __init__(self, data_dir, subset_size=None, augment=False, augment_prob=0.3):
         self.data_dir = data_dir
-        self.real_files = glob.glob(os.path.join(self.data_dir, "real/*.wav"))
-        self.fake_files = glob.glob(os.path.join(self.data_dir, "fake/*.wav"))
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        self.augment = augment
+        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
         
-        if subset_size:
-            self.real_files = self.real_files[:subset_size//2]
-            self.fake_files = self.fake_files[:subset_size//2]
+        # Glob all .wav files in the directory
+        all_wav_files = glob.glob(os.path.join(data_dir, "**/*.wav"), recursive=True)
+        
+        # Try to read meta.csv for labels
+        csv_path = os.path.join(data_dir, "meta.csv")
+        self.real_files = []
+        self.fake_files = []
+        
+        if os.path.exists(csv_path):
+            # Read CSV: columns are file, label (where label is "real" or "fake")
+            file_to_label = {}
+            with open(csv_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    file_to_label[row['file']] = row['label']
             
+            for wav_file in all_wav_files:
+                basename = os.path.basename(wav_file)
+                if basename in file_to_label:
+                    if file_to_label[basename] == 'real':
+                        self.real_files.append(wav_file)
+                    else:
+                        self.fake_files.append(wav_file)
+        else:
+            # Fallback: files containing "real" in filename are real, others are fake
+            for wav_file in all_wav_files:
+                if 'real' in wav_file.lower():
+                    self.real_files.append(wav_file)
+                else:
+                    self.fake_files.append(wav_file)
+        
+        # Apply subset_size if set
+        if subset_size:
+            random.shuffle(self.real_files)
+            random.shuffle(self.fake_files)
+            self.real_files = self.real_files[:subset_size // 2]
+            self.fake_files = self.fake_files[:subset_size // 2]
+        
         self.all_files = self.real_files + self.fake_files
         self.labels = [0] * len(self.real_files) + [1] * len(self.fake_files)
-        print(f"[+] In-The-Wild Loaded: {len(self.all_files)} samples")
 
     def __len__(self):
         return len(self.all_files)
@@ -256,25 +258,34 @@ class InTheWildDataset(Dataset):
     def __getitem__(self, idx):
         file_path = self.all_files[idx]
         label = self.labels[idx]
-        try:
-            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
-            img, scalars = feature_engineer(audio, sr)
-            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
-        except:
-            return self.__getitem__(np.random.randint(0, len(self.all_files)))
+        
+        audio = load_audio_multiformat(file_path)
+        audio = audio / (np.max(np.abs(audio)) + 1e-9)
+        
+        if self.augment:
+            audio = self.augmenter.apply_augmentations(audio)
+        
+        img = Image.fromarray(build_feature_image(audio))
+        scalars = extract_scalar_features(audio)
+        return self.transform(img), torch.tensor(scalars, dtype=torch.float32), label
+
+
 
 class MultiDataset(Dataset):
     """
-    Combines datasets. Supports optional args for Bug #4.
+    Combines multiple datasets by round-robin index mapping.
     """
-    def __init__(self, asv, wavefake=None, wild=None):
-        self.datasets = [ds for ds in [asv, wavefake, wild] if ds is not None]
-        print(f"[+] MultiDataset Initialized with {len(self.datasets)} source(s)")
+    def __init__(self, asv, wavefake, wild):
+        self.datasets = [asv, wavefake, wild]
+        self.lengths = [len(d) for d in self.datasets]
+        self.total_len = sum(self.lengths)
 
     def __len__(self):
-        return sum(len(d) for d in self.datasets)
+        return self.total_len
 
     def __getitem__(self, idx):
-        ds_idx = idx % len(self.datasets)
+        # Round-robin: idx % 3 picks source (0=asv, 1=wavefake, 2=wild)
+        ds_idx = idx % 3
         selected_ds = self.datasets[ds_idx]
-        return selected_ds[np.random.randint(0, len(selected_ds))]
+        local_idx = np.random.randint(0, len(selected_ds))
+        return selected_ds[local_idx]

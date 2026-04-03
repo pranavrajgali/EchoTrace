@@ -5,16 +5,15 @@ import torchvision.models as models
 class EchoTraceResNet(nn.Module):
     """
     EchoTrace Dual-Input Architecture:
-    - Backbone: ResNet50 (Frozen Stages 1-3, Fine-tuned Stage 4).
+    - Backbone: ResNet50 (Frozen Stages 1-2, Fine-tuned Stage 3-4).
     - Inputs: 3-channel Feature Image + 8-dim Forensic Scalar Vector.
     - Head: 2056-dim Classifier (2048 ResNet embedding + 8 scalars).
     """
     def __init__(self, num_scalars=8):
         super(EchoTraceResNet, self).__init__()
         
-        # Load ResNet50 backbone
-        # We initialize with None because weights will be handled via warm_start_new_pipeline
-        self.resnet = models.resnet50(weights=None)
+        # Load ResNet50 with ImageNet pre-trained weights
+        self.resnet = models.resnet50(weights='IMAGENET1K_V1')
         
         # Replace the standard 1000-class ImageNet FC layer with Identity
         # This allows us to extract the raw 2048-dim feature vector from the backbone
@@ -26,7 +25,7 @@ class EchoTraceResNet(nn.Module):
             nn.Linear(2048 + num_scalars, 512),
             nn.ReLU(),
             nn.Dropout(0.4),
-            nn.Linear(512, 512), # Added intermediate layer for better feature mapping
+            nn.Linear(512, 512),
             nn.ReLU(),
             nn.Linear(512, 1)    # Output logit for Binary Cross Entropy
         )
@@ -37,76 +36,34 @@ class EchoTraceResNet(nn.Module):
         x: Tensor of shape (Batch, 3, 224, 224) - The 3-channel feature image.
         scalars: Tensor of shape (Batch, 8) - Forensic scalar features.
         """
-        # 1. Extract 2048-dim latent features from the ResNet backbone
-        # We ensure the tensor is flattened to (Batch, 2048)
         spectral_features = self.resnet(x)
         spectral_features = torch.flatten(spectral_features, 1)
-        
-        # 2. Concatenate spectral features with forensic scalar features
-        # Resulting shape: (Batch, 2056)
         combined_features = torch.cat((spectral_features, scalars), dim=1)
-        
-        # 3. Pass through the classifier head to get the final logit
         return self.fc(combined_features)
 
-def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
-    """
-    Hardened weight surgery:
-    1. Handles both 'conv1' and 'resnet.conv1' for 3-channel averaging.
-    2. Maps weights from legacy 1-channel ResNet50.
-    3. Safely skips incompatible FC head weights from old architectures.
-    """
-    print(f"[*] Commencing weight surgery from: {checkpoint_path}")
-    
-    # Ensure device is a string or torch.device for map_location
-    if isinstance(device, int):
-        device = f"cuda:{device}"
-        
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    
-    # Handle the conv1 averaging first (before or after prefix)
-    for key in ['conv1.weight', 'resnet.conv1.weight']:
-        if key in checkpoint:
-            w = checkpoint[key]
-            if w.shape[1] == 1:
-                print(f"[!] Averaging {key} for 3-channel input.")
-                checkpoint[key] = w.repeat(1, 3, 1, 1) / 3.0
-    
-    # Prefix mapping loop + FILTER OUT OLD FC HEAD WEIGHTS
-    new_state_dict = {}
-    for k, v in checkpoint.items():
-        # SKIP old FC head weights (they have different dimensions)
-        if k.startswith('fc.') or (k.startswith('module.fc.') if 'module.' in k else False):
-            print(f"[!] Skipping incompatible weight: {k} (shape {v.shape})")
-            continue
-        
-        # Map raw resnet keys to our wrapper
-        if not k.startswith('resnet.') and not k.startswith('module.'):
-            new_state_dict[f"resnet.{k}"] = v
-        else:
-            new_state_dict[k] = v
-
-    # Load backbone weights only (strict=False)
-    msg = model.load_state_dict(new_state_dict, strict=False)
-    
-    print(f"[+] Loaded backbone weights successfully.")
-    print(f"[!] Note: Missing FC head weights (expected - will train from scratch): {len([k for k in msg.missing_keys if 'fc.' in k])}")
-    
-    return model
 
 def build_model(device="cpu"):
-    """Factory function for EchoTrace model initialization."""
+    """Factory function for EchoTrace model initialization with explicit layer freezing."""
     model = EchoTraceResNet()
+    
+    # Freeze layers 1 and 2 (early features from ImageNet)
+    for param in model.resnet.layer1.parameters():
+        param.requires_grad = False
+    for param in model.resnet.layer2.parameters():
+        param.requires_grad = False
+    
     return model.to(device)
+
 
 def get_loss():
     """Returns the Binary Cross Entropy with Logits loss criterion."""
     return nn.BCEWithLogitsLoss()
 
-def get_optimizer(model, lr_backbone=1e-6, lr_head=1e-4):
-    """Returns the AdamW optimizer with differential learning rates for better fine-tuning."""
-    return torch.optim.AdamW([
-        {'params': model.resnet.layer3.parameters(), 'lr': lr_backbone},
-        {'params': model.resnet.layer4.parameters(), 'lr': lr_backbone},
-        {'params': model.fc.parameters(), 'lr': lr_head}
+
+def get_optimizer(model):
+    """Returns the Adam optimizer with differential learning rates for fine-tuning."""
+    return torch.optim.Adam([
+        {'params': model.resnet.layer3.parameters(), 'lr': 1e-6},
+        {'params': model.resnet.layer4.parameters(), 'lr': 1e-5},
+        {'params': model.fc.parameters(), 'lr': 1e-4}
     ])
