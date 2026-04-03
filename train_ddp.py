@@ -4,13 +4,14 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 from torch.amp import GradScaler, autocast
 
 # Import your custom modules
-from core.model import build_model, warm_start_new_pipeline
+from core.model import EchoTraceResNet, warm_start_new_pipeline, build_model
 from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, MultiDataset
 
 # --- Configuration ---

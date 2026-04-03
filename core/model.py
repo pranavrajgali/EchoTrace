@@ -84,6 +84,19 @@ def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
     
     return model
 
-def get_criterion():
-    """Returns the loss function: Binary Cross Entropy with Logits."""
+def build_model(device="cpu"):
+    """Factory function for EchoTrace model initialization."""
+    model = EchoTraceResNet()
+    return model.to(device)
+
+def get_loss():
+    """Returns the Binary Cross Entropy with Logits loss criterion."""
     return nn.BCEWithLogitsLoss()
+
+def get_optimizer(model, lr_backbone=1e-6, lr_head=1e-4):
+    """Returns the AdamW optimizer with differential learning rates for better fine-tuning."""
+    return torch.optim.AdamW([
+        {'params': model.resnet.layer3.parameters(), 'lr': lr_backbone},
+        {'params': model.resnet.layer4.parameters(), 'lr': lr_backbone},
+        {'params': model.fc.parameters(), 'lr': lr_head}
+    ])
