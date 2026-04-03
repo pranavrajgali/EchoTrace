@@ -22,8 +22,8 @@ assert WORLD_SIZE > 0, "No CUDA GPUs found"
 # Dataset Directories
 ASV_PROTOCOL = "./data/asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
 ASV_DIR = "./data/asvspoof2019/LA/ASVspoof2019_LA_train/flac/"
-WAVEFAKE_DIR = "./data/wavefake-test/"
-ITW_DIR = "./data/release_in_the_wild/"
+WAVEFAKE_DIR = "./data/wavefake/wavefake-test/"
+ITW_DIR = "./data/in_the_wild/release_in_the_wild/"
 
 # Training Hyper-parameters
 BATCH_SIZE_PER_GPU = 4  # Very small for GPU memory safety
