@@ -26,9 +26,9 @@ WAVEFAKE_DIR = "./data/wavefake-test/"
 ITW_DIR = "./data/release_in_the_wild/"
 
 # Training Hyper-parameters
-BATCH_SIZE_PER_GPU = 8  # Reduced for stability
+BATCH_SIZE_PER_GPU = 4  # Very small for GPU memory safety
 NUM_EPOCHS = 10
-SUBSET_SIZE = 1000  # For debugging: use only 1000 samples per dataset
+SUBSET_SIZE = 500  # Reduced further
 SAVE_DIR = 'checkpoints'
 
 def setup_ddp(rank, world_size):
