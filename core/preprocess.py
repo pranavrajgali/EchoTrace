@@ -284,12 +284,12 @@ class InTheWildDataset(Dataset):
 class MultiDataset(Dataset):
     """
     Combines multiple datasets by round-robin index mapping.
-    Filters out None datasets.
+    All three datasets are MANDATORY: ASVspoof, WaveFake, InTheWild.
     """
     def __init__(self, asv, wavefake, wild):
-        self.datasets = [d for d in [asv, wavefake, wild] if d is not None]
-        if not self.datasets:
-            raise ValueError("At least one dataset must be provided")
+        if asv is None or wavefake is None or wild is None:
+            raise ValueError("All three datasets (ASV, WaveFake, InTheWild) are mandatory")
+        self.datasets = [asv, wavefake, wild]
         self.total_len = sum(len(d) for d in self.datasets)
 
     def __len__(self):

@@ -52,15 +52,10 @@ def cleanup_ddp():
 def get_dataloaders(rank, world_size):
     print(f"[*] Rank {rank}: Initializing Datasets...")
     
-    # Try to load ASV dataset, skip if protocol file not found
-    asv_data = None
-    try:
-        asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
-        if rank == 0:
-            print(f"[+] ASV dataset loaded: {len(asv_data)} samples")
-    except FileNotFoundError:
-        if rank == 0:
-            print("[!] ASV protocol file not found, skipping ASV dataset")
+    # Load ASV dataset (MANDATORY)
+    asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
+    if rank == 0:
+        print(f"[+] ASV dataset loaded: {len(asv_data)} samples")
     
     wavefake_data = WaveFakeDataset(WAVEFAKE_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
     itw_data = InTheWildDataset(ITW_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
