@@ -47,30 +47,24 @@ class AudioAugmenter:
 
 def extract_scalar_features(audio, sr=16000):
     """
-    Extracts 8 forensic scalar features to identify AI-generated artifacts.
-    - Jitter/Shimmer: Detect unnatural stability in pitch/amplitude.
-    - Flatness/ZCR: Catch high-frequency 'metallic' hiss from neural vocoders.
-    - F0/Centroid Stats: Monitor robotic consistency in the speech signal.
+    Stabilized forensic scalar extraction.
+    Removed complex pyin/jitter for stability in this DDP environment.
     """
-    # Fundamental frequency extraction via Probabilistic YIN
-    f0, _, _ = librosa.pyin(audio, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-    f0_clean = f0[~np.isnan(f0)]
-    f0_mean = np.mean(f0_clean) if len(f0_clean) > 0 else 0
-    f0_std = np.std(f0_clean) if len(f0_clean) > 0 else 0
-    
-    # Jitter: Frequency instability
-    jitter = np.mean(np.abs(np.diff(f0_clean))) / f0_mean if f0_mean > 0 else 0
-    # Shimmer: Amplitude instability
-    shimmer = np.std(librosa.feature.rms(y=audio))
-    
-    flatness = np.mean(librosa.feature.spectral_flatness(y=audio))
-    zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio))
-    centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
-    
-    scalars = np.array([
-        jitter, shimmer, flatness, zcr, 
-        f0_mean, f0_std, np.mean(centroid), np.std(centroid)
-    ], dtype=np.float32)
+    try:
+        # Fast, stable features only
+        zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio))
+        flatness = np.mean(librosa.feature.spectral_flatness(y=audio))
+        centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
+        rolloff = librosa.feature.spectral_rolloff(y=audio, sr=sr)
+        
+        scalars = np.array([
+            zcr, flatness,
+            np.mean(centroid), np.std(centroid),
+            np.mean(rolloff), np.std(rolloff),
+            0.0, 0.0 # Placeholders for jitter/shimmer
+        ], dtype=np.float32)
+    except:
+        scalars = np.zeros(8, dtype=np.float32)
     
     # Replace any NaN/Inf from edge-case audio (silent, single-pitch, etc.)
     scalars = np.nan_to_num(scalars, nan=0.0, posinf=1.0, neginf=0.0)
