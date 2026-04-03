@@ -63,7 +63,7 @@ def warm_start_new_pipeline(model, checkpoint_path, device):
     3. Maps backbone keys to the new class structure.
     """
     print(f"[*] Commencing warm start from: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     
     # Check if we need to modify the first convolution layer
     # Old models used 3 identical mel channels; new models use 3 different feature types

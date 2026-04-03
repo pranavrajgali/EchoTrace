@@ -28,6 +28,8 @@ def run_sanity_check():
     try:
         import os
         if os.path.exists(checkpoint_path):
+            # Use recommended weights_only=True to stop FutureWarnings
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
             print(f"[*] Testing weight surgery from {checkpoint_path}...")
             model = warm_start_new_pipeline(model, checkpoint_path, device)
             print("[+] Weight surgery completed successfully.")
