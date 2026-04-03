@@ -16,7 +16,7 @@ class AudioAugmenter:
     Using real-world noise (speech/music/noise) instead of synthetic white noise 
     prevents the model from overfitting to clean digital signals.
     """
-    def __init__(self, p=0.3, musan_path='../data/noise/musan/noise/'):
+    def __init__(self, p=0.3, musan_path='./data/noise/musan/noise/'):
         self.p = p
         # Load real noise clips from the MUSAN directory
         self.musan_files = glob.glob(os.path.join(musan_path, "**/*.wav"), recursive=True)
