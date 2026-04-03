@@ -284,18 +284,20 @@ class InTheWildDataset(Dataset):
 class MultiDataset(Dataset):
     """
     Combines multiple datasets by round-robin index mapping.
+    Filters out None datasets.
     """
     def __init__(self, asv, wavefake, wild):
-        self.datasets = [asv, wavefake, wild]
-        self.lengths = [len(d) for d in self.datasets]
-        self.total_len = sum(self.lengths)
+        self.datasets = [d for d in [asv, wavefake, wild] if d is not None]
+        if not self.datasets:
+            raise ValueError("At least one dataset must be provided")
+        self.total_len = sum(len(d) for d in self.datasets)
 
     def __len__(self):
         return self.total_len
 
     def __getitem__(self, idx):
-        # Round-robin: idx % 3 picks source (0=asv, 1=wavefake, 2=wild)
-        ds_idx = idx % 3
+        # Round-robin: idx % num_datasets picks source
+        ds_idx = idx % len(self.datasets)
         selected_ds = self.datasets[ds_idx]
         local_idx = np.random.randint(0, len(selected_ds))
         return selected_ds[local_idx]
