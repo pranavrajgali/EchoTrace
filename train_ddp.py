@@ -99,14 +99,20 @@ def train(rank, world_size):
         {'params': model.module.fc.parameters(), 'lr': LR_HEAD}
     ])
     
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()  # Binary classification loss
     scaler = torch.amp.GradScaler("cuda")
     loader, sampler = get_dataloaders(rank, world_size)
+    
+    # Create checkpoint directory if not exists
+    if rank == 0:
+        os.makedirs(SAVE_DIR, exist_ok=True)
     
     print(f"[*] Rank {rank}: Starting DDP Training Loop...")
     for epoch in range(NUM_EPOCHS):
         sampler.set_epoch(epoch)
         model.train()
+        epoch_loss = 0.0  # Initialize epoch loss accumulator
+        epoch_start_time = time.time()  # Track epoch timing
         
         # Warmup Check for first epoch
         if epoch == 0 and rank == 0:
@@ -115,7 +121,7 @@ def train(rank, world_size):
         for batch_idx, (images, scalars, labels) in enumerate(loader):
             images = images.to(device)
             scalars = scalars.to(device)
-            labels = labels.to(device)
+            labels = labels.float().unsqueeze(1).to(device)  # Binary target: (batch, 1)
             
             optimizer.zero_grad()
             
@@ -138,12 +144,13 @@ def train(rank, world_size):
 
             # Logging on Master Node (Rank 0)
             if rank == 0 and batch_idx % 50 == 0:
-                print(f"Epoch [{epoch}/{EPOCHS-1}] | Batch [{batch_idx}/{len(loader)}] | Loss: {loss.item():.4f}")
+                print(f"Epoch [{epoch}/{NUM_EPOCHS-1}] | Batch [{batch_idx}/{len(loader)}] | Loss: {loss.item():.4f}")
 
         # --- Epoch Conclusion & Checkpointing ---
         if rank == 0:
             avg_loss = epoch_loss / len(loader)
-            print(f"=== Epoch {epoch} Complete | Avg Loss: {avg_loss:.4f} | Time: {(time.time()-start_time)/60:.2f} min ===")
+            epoch_elapsed = (time.time() - epoch_start_time) / 60
+            print(f"=== Epoch {epoch} Complete | Avg Loss: {avg_loss:.4f} | Time: {epoch_elapsed:.2f} min ===")
             
             # Save Checkpoint
             save_path = os.path.join(SAVE_DIR, f"ensemble_epoch_{epoch}.pth")

@@ -3,7 +3,7 @@ import cv2
 import librosa
 import numpy as np
 import os
-from model import build_model
+from .model import build_model
 import torchvision.transforms as transforms
 from PIL import Image
 import io

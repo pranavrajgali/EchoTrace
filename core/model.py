@@ -54,6 +54,7 @@ def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
     Hardened weight surgery:
     1. Handles both 'conv1' and 'resnet.conv1' for 3-channel averaging.
     2. Maps weights from legacy 1-channel ResNet50.
+    3. Safely skips incompatible FC head weights from old architectures.
     """
     print(f"[*] Commencing weight surgery from: {checkpoint_path}")
     
@@ -71,21 +72,25 @@ def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
                 print(f"[!] Averaging {key} for 3-channel input.")
                 checkpoint[key] = w.repeat(1, 3, 1, 1) / 3.0
     
-    # Prefix mapping loop
+    # Prefix mapping loop + FILTER OUT OLD FC HEAD WEIGHTS
     new_state_dict = {}
     for k, v in checkpoint.items():
+        # SKIP old FC head weights (they have different dimensions)
+        if k.startswith('fc.') or (k.startswith('module.fc.') if 'module.' in k else False):
+            print(f"[!] Skipping incompatible weight: {k} (shape {v.shape})")
+            continue
+        
         # Map raw resnet keys to our wrapper
-        if not k.startswith('resnet.') and not k.startswith('fc.'):
+        if not k.startswith('resnet.') and not k.startswith('module.'):
             new_state_dict[f"resnet.{k}"] = v
         else:
             new_state_dict[k] = v
 
-    # Load compatible weights (Backbone Stage 1-4)
-    # strict=False allows us to load the backbone while ignoring the missing FC head weights
+    # Load backbone weights only (strict=False)
     msg = model.load_state_dict(new_state_dict, strict=False)
     
     print(f"[+] Loaded backbone weights successfully.")
-    print(f"[!] Note: Missing keys (expected for new head): {len(msg.missing_keys)}")
+    print(f"[!] Note: Missing FC head weights (expected - will train from scratch): {len([k for k in msg.missing_keys if 'fc.' in k])}")
     
     return model
 

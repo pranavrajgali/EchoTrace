@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, precision_recall_curve, auc
 import matplotlib.pyplot as plt
 import seaborn as sns
-from model import build_model
-from preprocess import ASVDataset, InTheWildDataset
+from .model import build_model
+from .preprocess import ASVDataset, InTheWildDataset
 
 def setup_device():
     """Setup the best available device with optimizations"""

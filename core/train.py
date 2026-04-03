@@ -4,8 +4,8 @@ import sys
 import logging
 from datetime import datetime
 from torch.utils.data import DataLoader
-from model import build_model, get_loss, get_optimizer
-from preprocess import ASVDataset, InTheWildDataset, MultiDataset
+from .model import build_model, get_loss, get_optimizer
+from .preprocess import ASVDataset, InTheWildDataset, MultiDataset
 
 
 def setup_logger(log_path):
