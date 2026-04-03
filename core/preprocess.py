@@ -1,216 +1,232 @@
-# preprocess.py - Optimized for Real-World Robustness and ResNet50 Fine-Tuning
 import os
 import torch
 import librosa
 import numpy as np
 import random
+import glob
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 from PIL import Image
-import scipy.signal
-from scipy.io import wavfile
-import soundfile as sf
-from typing import List, Tuple, Optional
-import glob
 
 class AudioAugmenter:
-    """Audio augmentation class to simulate domain shift and real-world conditions"""
+    """
+    Handles robust audio augmentation using the MUSAN noise corpus.
+    Using real-world noise (speech/music/noise) instead of synthetic white noise 
+    prevents the model from overfitting to clean digital signals.
+    """
+    def __init__(self, p=0.3, musan_path='../data/noise/musan/noise/'):
+        self.p = p
+        # Load real noise clips from the MUSAN directory
+        self.musan_files = glob.glob(os.path.join(musan_path, "**/*.wav"), recursive=True)
 
-    def __init__(self, p=0.3): # Lowered default probability to 0.3 to prevent signal destruction
-        self.p = p  
-
-    def add_noise(self, audio, noise_type='white', snr_range=(10, 30)):
-        """Add background noise at random SNR - adjusted for realistic noise levels"""
+    def add_noise(self, audio):
+        """Injects real background noise at random volumes."""
         if random.random() > self.p:
             return audio
-        if noise_type == 'white':
-            noise = np.random.normal(0, 1, len(audio))
-        elif noise_type == 'pink':
-            white = np.random.normal(0, 1, len(audio))
-            noise = np.convolve(white, [1, 1], mode='same')
-            noise = noise / np.max(np.abs(noise))
-        else:
-            return audio
-        snr_db = random.uniform(*snr_range)
-        audio_rms = np.sqrt(np.mean(audio**2))
-        noise_rms = audio_rms / (10**(snr_db/20))
-        noise = noise * noise_rms / (np.sqrt(np.mean(noise**2)) + 1e-9)
-        return audio + noise
-
-    def change_speed(self, audio, speed_range=(0.95, 1.05)):
-        if random.random() > self.p: return audio
-        speed = random.uniform(*speed_range)
-        return librosa.effects.time_stretch(audio, rate=speed)
-
-    def change_pitch(self, audio, pitch_range=(-1, 1)):
-        if random.random() > self.p: return audio
-        pitch_steps = random.uniform(*pitch_range)
-        return librosa.effects.pitch_shift(audio, sr=16000, n_steps=pitch_steps)
-
-    def add_reverb(self, audio, reverb_amount=0.2):
-        if random.random() > self.p: return audio
-        delay_samples = int(16000 * 0.03)
-        decay = 0.3
-        reverb_audio = audio.copy()
-        for i in range(2):
-            delay = delay_samples * (i + 1)
-            if delay < len(audio):
-                reverb_audio[delay:] += audio[:-delay] * (decay ** (i + 1))
-        return audio * (1 - reverb_amount) + reverb_audio * reverb_amount
-
-    def simulate_mp3_compression(self, audio):
-        """Simulates social media compression artifacts"""
-        if random.random() > self.p: return audio
-        bitrate = random.choice([32, 64, 128]) # Focus on low bitrates
-        cutoff_freq = min(7500, bitrate * 80) 
-        sos = scipy.signal.butter(4, cutoff_freq, 'lowpass', fs=16000, output='sos')
-        return scipy.signal.sosfilt(sos, audio)
+        
+        if self.musan_files:
+            noise_path = random.choice(self.musan_files)
+            noise, _ = librosa.load(noise_path, sr=16000)
+            
+            # Match noise length to the input audio
+            if len(noise) < len(audio):
+                noise = np.pad(noise, (0, len(audio) - len(noise)))
+            else:
+                noise = noise[:len(audio)]
+            
+            # Apply at a random intensity to simulate different environments
+            snr_factor = random.uniform(0.01, 0.1)
+            return audio + noise * snr_factor
+        
+        # Fallback to standard white noise if MUSAN is not found
+        return audio + np.random.normal(0, 0.005, len(audio))
 
     def apply_augmentations(self, audio):
-        """Apply random combination of augmentations - excludes Mandatory Normalization"""
-        augmentations = [
-            lambda x: self.add_noise(x),
-            lambda x: self.change_speed(x),
-            lambda x: self.change_pitch(x),
-            lambda x: self.add_reverb(x),
-            lambda x: self.simulate_mp3_compression(x)
-        ]
-        # Apply 1-2 random augmentations to maintain recognizable signal
-        num_augs = random.randint(1, 2)
-        selected_augs = random.sample(augmentations, num_augs)
-        augmented_audio = audio.copy()
-        for aug in selected_augs:
-            augmented_audio = aug(augmented_audio)
-        
-        # Consistent length maintenance
-        if len(augmented_audio) > 64000:
-            augmented_audio = augmented_audio[:64000]
-        elif len(augmented_audio) < 64000:
-            augmented_audio = np.pad(augmented_audio, (0, 64000 - len(augmented_audio)))
-        return augmented_audio
+        """Entry point for training-time augmentations."""
+        return self.add_noise(audio)
 
-def load_audio_multiformat(file_path: str, target_sr: int = 16000, duration: float = 4.0) -> np.ndarray:
-    """Load audio with high-quality resampling using soxr_hq."""
-    try:
-        audio, _ = librosa.load(file_path, sr=target_sr, duration=duration, res_type='soxr_hq')
-    except Exception:
-        try:
-            audio, sr = sf.read(file_path, dtype='float32')
-            if sr != target_sr:
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr, res_type='soxr_hq')
-        except Exception as e:
-            raise RuntimeError(f"Failed to load {file_path}: {e}")
+def extract_scalar_features(audio, sr=16000):
+    """
+    Extracts 8 forensic scalar features to identify AI-generated artifacts.
+    - Jitter/Shimmer: Detect unnatural stability in pitch/amplitude.
+    - Flatness/ZCR: Catch high-frequency 'metallic' hiss from neural vocoders.
+    - F0/Centroid Stats: Monitor robotic consistency in the speech signal.
+    """
+    # Fundamental frequency extraction via Probabilistic YIN
+    f0, _, _ = librosa.pyin(audio, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+    f0_clean = f0[~np.isnan(f0)]
+    f0_mean = np.mean(f0_clean) if len(f0_clean) > 0 else 0
+    f0_std = np.std(f0_clean) if len(f0_clean) > 0 else 0
     
-    # Standardize to fixed length
-    max_samples = int(target_sr * duration)
-    if len(audio) < max_samples:
-        audio = np.pad(audio, (0, max_samples - len(audio)))
-    else:
-        audio = audio[:max_samples]
-    return audio
+    # Jitter: Frequency instability
+    jitter = np.mean(np.abs(np.diff(f0_clean))) / f0_mean if f0_mean > 0 else 0
+    # Shimmer: Amplitude instability
+    shimmer = np.std(librosa.feature.rms(y=audio))
+    
+    flatness = np.mean(librosa.feature.spectral_flatness(y=audio))
+    zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio))
+    centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
+    
+    scalars = np.array([
+        jitter, shimmer, flatness, zcr, 
+        f0_mean, f0_std, np.mean(centroid), np.std(centroid)
+    ], dtype=np.float32)
+    
+    # Normalize to [0,1] range for network stability
+    return np.clip(scalars / (np.max(np.abs(scalars)) + 1e-9), 0, 1)
+
+def build_feature_image(audio, sr=16000):
+    """
+    Stacks three spectral views into a (224, 224, 3) feature image for ResNet50.
+    Ch1: Mel-Spectrogram (Spectral shape).
+    Ch2: MFCCs + Delta + Delta-Delta (120 rows for speech dynamics).
+    Ch3: Spectral Contrast + Chroma (Harmonic/Artifact structure).
+    """
+    # Channel 1: Mel Spectrogram
+    mel = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=224, n_fft=2048, hop_length=256)
+    ch1 = librosa.power_to_db(mel, ref=np.max)
+    
+    # Channel 2: MFCCs with dynamics (Stacked to 120 rows)
+    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
+    ch2 = np.vstack([mfcc, librosa.feature.delta(mfcc), librosa.feature.delta(mfcc, order=2)])
+    
+    # Channel 3: Spectral Contrast (7) + Chroma (12) (Stacked to 19 rows)
+    ch3 = np.vstack([librosa.feature.spectral_contrast(y=audio, sr=sr), 
+                     librosa.feature.chroma_stft(y=audio, sr=sr)])
+    
+    def normalize_and_resize(data):
+        # Normalize local data to uint8 scale
+        data = (data - data.min()) / (data.max() - data.min() + 1e-6)
+        img = Image.fromarray((data * 255).astype(np.uint8)).resize((224, 224))
+        return np.array(img)
+
+    # Stack into RGB-style image
+    return np.stack([normalize_and_resize(ch1), 
+                     normalize_and_resize(ch2), 
+                     normalize_and_resize(ch3)], axis=-1)
+
+def load_audio_multiformat(file_path, target_sr=16000, duration=4.0):
+    """Loads audio and enforces a fixed duration for batching."""
+    audio, _ = librosa.load(file_path, sr=target_sr, duration=duration)
+    target_len = int(target_sr * duration)
+    if len(audio) < target_len:
+        audio = np.pad(audio, (0, target_len - len(audio)))
+    return audio[:target_len]
 
 class ASVDataset(Dataset):
-    def __init__(self, protocol_file, data_dir, subset_size=1000, augment=False, augment_prob=0.3):
-        self.data_dir = os.path.abspath(data_dir)
+    """Dataset class for ASVspoof 2019 LA files."""
+    def __init__(self, protocol_file, data_dir, subset_size=None, augment=False):
+        self.data_dir = data_dir
         self.files, self.labels = [], []
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         self.augment = augment
-        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
+        self.augmenter = AudioAugmenter() if augment else None
 
         with open(protocol_file, 'r') as f:
-            for line in f:
+            lines = f.readlines()
+            if subset_size: lines = lines[:subset_size]
+            for line in lines:
                 parts = line.strip().split()
-                if len(parts) >= 5:
-                    self.files.append(parts[1])
-                    self.labels.append(0 if parts[4] == 'bonafide' else 1)
-
-        idx_0 = [i for i, l in enumerate(self.labels) if l == 0]
-        idx_1 = [i for i, l in enumerate(self.labels) if l == 1]
-        n_samples = min(subset_size, len(idx_0), len(idx_1))
-        selected = random.sample(idx_0, n_samples) + random.sample(idx_1, n_samples)
-        self.files = [self.files[i] for i in selected]
-        self.labels = [self.labels[i] for i in selected]
+                self.files.append(parts[1])
+                self.labels.append(0 if parts[4] == 'bonafide' else 1)
 
     def __len__(self): return len(self.files)
 
     def __getitem__(self, idx):
-        base_path = os.path.join(self.data_dir, self.files[idx])
-        audio_path = next((base_path + ext for ext in ['.flac', '.wav', '.mp3'] if os.path.exists(base_path + ext)), None)
-        if not audio_path: raise FileNotFoundError(f"Missing: {self.files[idx]}")
+        path = os.path.join(self.data_dir, self.files[idx] + ".flac")
+        audio = load_audio_multiformat(path)
+        # Mandatory Peak Normalization
+        audio = audio / (np.max(np.abs(audio)) + 1e-9)
+        
+        if self.augment: audio = self.augmenter.apply_augmentations(audio)
+        
+        img = Image.fromarray(build_feature_image(audio))
+        scalars = extract_scalar_features(audio)
+        return self.transform(img), torch.tensor(scalars), self.labels[idx]
 
-        # 1. Load 
-        audio = load_audio_multiformat(audio_path)
-
-        # 2. MANDATORY PEAK NORMALIZATION (Critical for multi-dataset training)
-        peak = np.max(np.abs(audio))
-        if peak > 1e-7: audio = audio / peak
-
-        # 3. Augment (Training only)
-        if self.augment and self.augmenter:
-            audio = self.augmenter.apply_augmentations(audio)
-
-        # 4. Mel-Spectrogram (Forced n_mels=224 for ResNet)
-        mel = librosa.feature.melspectrogram(y=audio, sr=16000, n_mels=224, n_fft=1024)
-        log_mel = librosa.power_to_db(mel, ref=np.max)
-
-        # 5. Image Conversion
-        img = ((log_mel - log_mel.min()) / (log_mel.max() - log_mel.min() + 1e-6) * 255).astype(np.uint8)
-        img_pil = Image.fromarray(img).convert("RGB")
-        return self.transform(img_pil), self.labels[idx]
-
-class InTheWildDataset(Dataset):
-    def __init__(self, data_dir, subset='train', subset_size=1000, augment=False, augment_prob=0.3):
-        self.data_dir = os.path.abspath(data_dir)
-        self.files, self.labels = [], []
+class WaveFakeDataset(Dataset):
+    """
+    Targeted dataset for modern neural vocoders (HiFi-GAN, MelGAN, etc.).
+    All folders in 'generated_audio' are treated as FAKE.
+    """
+    def __init__(self, data_dir, subset_size=None):
+        self.data_dir = data_dir
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        self.augment = augment
-        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
-
-        fake_dir = os.path.join(self.data_dir, subset, 'fake')
-        real_dir = os.path.join(self.data_dir, subset, 'real')
         
-        fakes = glob.glob(os.path.join(fake_dir, "*.*"))
-        reals = glob.glob(os.path.join(real_dir, "*.*"))
+        # Real: LJSpeech-1.1 wavs + JSUT original Japanese speech
+        self.real_files = glob.glob(os.path.join(data_dir, "the-LJSpeech-1.1/wavs/*.wav"))
+        self.real_files += glob.glob(os.path.join(data_dir, "jsut_ver1.1/**/*.wav"), recursive=True)
+        # Fake: All recursive wavs in generated_audio
+        self.fake_files = glob.glob(os.path.join(data_dir, "generated_audio/**/*.wav"), recursive=True)
         
-        n = min(subset_size, len(fakes), len(reals))
-        self.files = random.sample(fakes, n) + random.sample(reals, n)
-        self.labels = [1]*n + [0]*n
+        if subset_size:
+            random.shuffle(self.real_files)
+            random.shuffle(self.fake_files)
+            self.real_files = self.real_files[:subset_size//2]
+            self.fake_files = self.fake_files[:subset_size//2]
+        
+        self.all_files = self.real_files + self.fake_files
+        self.labels = [0]*len(self.real_files) + [1]*len(self.fake_files)
 
-    def __len__(self): return len(self.files)
+    def __len__(self): return len(self.all_files)
 
     def __getitem__(self, idx):
-        audio = load_audio_multiformat(self.files[idx])
+        audio = load_audio_multiformat(self.all_files[idx])
+        audio = audio / (np.max(np.abs(audio)) + 1e-9)
         
-        # Mandatory Normalization
-        peak = np.max(np.abs(audio))
-        if peak > 1e-7: audio = audio / peak
+        img = Image.fromarray(build_feature_image(audio))
+        scalars = extract_scalar_features(audio)
+        return self.transform(img), torch.tensor(scalars), self.labels[idx]
 
-        if self.augment and self.augmenter:
-            audio = self.augmenter.apply_augmentations(audio)
+class InTheWildDataset(Dataset):
+    """Dataset for 'In-The-Wild' real-world recordings."""
+    def __init__(self, data_dir, subset='train'):
+        self.data_dir = os.path.join(data_dir, subset)
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        self.real_files = glob.glob(os.path.join(self.data_dir, "real/*.wav"))
+        # Any file not in the 'real' folder is considered fake
+        self.fake_files = [f for f in glob.glob(os.path.join(self.data_dir, "**/*.wav"), recursive=True) 
+                           if "real" not in f]
+        
+        self.all_files = self.real_files + self.fake_files
+        self.labels = [0]*len(self.real_files) + [1]*len(self.fake_files)
 
-        mel = librosa.feature.melspectrogram(y=audio, sr=16000, n_mels=224, n_fft=1024)
-        log_mel = librosa.power_to_db(mel, ref=np.max)
-        img = ((log_mel - log_mel.min()) / (log_mel.max() - log_mel.min() + 1e-6) * 255).astype(np.uint8)
-        img_pil = Image.fromarray(img).convert("RGB")
-        return self.transform(img_pil), self.labels[idx]
+    def __len__(self): return len(self.all_files)
+
+    def __getitem__(self, idx):
+        audio = load_audio_multiformat(self.all_files[idx])
+        audio = audio / (np.max(np.abs(audio)) + 1e-9)
+        
+        img = Image.fromarray(build_feature_image(audio))
+        scalars = extract_scalar_features(audio)
+        return self.transform(img), torch.tensor(scalars), self.labels[idx]
 
 class MultiDataset(Dataset):
-    def __init__(self, asv_dataset, wild_dataset):
-        self.asv = asv_dataset
-        self.wild = wild_dataset
-        self.length = min(len(asv_dataset), len(wild_dataset)) * 2
+    """
+    Consolidated dataset using round-robin sampling across all three sources.
+    Ensures training is balanced between legacy, modern, and real-world samples.
+    """
+    def __init__(self, asv, wavefake, wild):
+        self.datasets = [asv, wavefake, wild]
 
-    def __len__(self): return self.length
+    def __len__(self):
+        return sum(len(d) for d in self.datasets)
 
     def __getitem__(self, idx):
-        if idx % 2 == 0:
-            return self.asv[random.randint(0, len(self.asv)-1)]
-        return self.wild[random.randint(0, len(self.wild)-1)]
+        # Round-robin selection based on index
+        ds_idx = idx % len(self.datasets)
+        selected_ds = self.datasets[ds_idx]
+        
+        # Pick a random sample from the chosen dataset
+        rand_idx = random.randint(0, len(selected_ds) - 1)
+        return selected_ds[rand_idx]
