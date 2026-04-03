@@ -4,93 +4,136 @@ import librosa
 import numpy as np
 import os
 from .model import build_model
+from .preprocess import build_feature_image, extract_scalar_features
 import torchvision.transforms as transforms
 from PIL import Image
 import io
 import base64
 
-# 1. Device and Model Initialization
+# ── Device & Model ───────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_PATH = os.path.join(BASE_DIR, "deepfake_detector.pth")
 
-if torch.backends.mps.is_available():
+# Prefer ensemble_model.pth if it exists (post-DDP), else fall back to original weights
+def _find_weights():
+    for name in ("ensemble_model.pth", "deepfake_detector.pth"):
+        p = os.path.join(BASE_DIR, name)
+        if os.path.exists(p):
+            return p
+    return None
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
 
 model = build_model(device)
-if os.path.exists(MODEL_PATH):
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+
+_weights_path = _find_weights()
+if _weights_path:
+    state = torch.load(_weights_path, map_location=device)
+    # Strip DDP "module." prefix if present
+    state = {k.replace("module.", ""): v for k, v in state.items()}
+    # Load with strict=False so old single-channel weights don't crash the new head
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if missing:
+        print(f"[inference] Missing keys (expected for new head): {missing[:5]}")
 model.eval()
 
-# 2. Grad-CAM Hooks
-activations, gradients = None, None
-def hook_fn(module, input, output): 
-    global activations
-    activations = output
+# ── Grad-CAM hooks on layer4 (spectrogram branch) ───────────
+_activations, _gradients = {}, {}
 
-def backward_hook(module, grad_in, grad_out): 
-    global gradients
-    gradients = grad_out[0]
+def _fwd_hook(module, input, output):
+    _activations["value"] = output
 
-target_layer = model.layer4[-1]
-target_layer.register_forward_hook(hook_fn)
-target_layer.register_full_backward_hook(backward_hook)
+def _bwd_hook(module, grad_in, grad_out):
+    _gradients["value"] = grad_out[0]
 
-def process_gradcam(cam, original_img_np):
-    cam = np.maximum(cam.cpu().detach().numpy(), 0)
+_target_layer = model.resnet.layer4[-1]
+_target_layer.register_forward_hook(_fwd_hook)
+_target_layer.register_full_backward_hook(_bwd_hook)
+
+# ── Transforms ───────────────────────────────────────────────
+_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+# ── Grad-CAM ─────────────────────────────────────────────────
+def _compute_gradcam(original_img_np: np.ndarray) -> str:
+    """Returns base64-encoded PNG of Grad-CAM overlay on the mel channel."""
+    act = _activations.get("value")
+    grad = _gradients.get("value")
+    if act is None or grad is None:
+        return ""
+
+    weights = torch.mean(grad, dim=[0, 2, 3])
+    cam = torch.zeros(act.shape[2:], dtype=torch.float32, device=act.device)
+    for i, w in enumerate(weights):
+        cam += w * act[0, i, :, :]
+
+    cam = cam.cpu().detach().numpy()
+    cam = np.maximum(cam, 0)
     cam = cv2.resize(cam, (224, 224))
-    cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+    if cam.max() > cam.min():
+        cam = (cam - cam.min()) / (cam.max() - cam.min())
+    else:
+        cam = np.zeros_like(cam)
+
     heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
     overlay = cv2.addWeighted(original_img_np, 0.6, heatmap, 0.4, 0)
-    _, buffer = cv2.imencode('.png', overlay)
-    return base64.b64encode(buffer).decode('utf-8')
+    _, buf = cv2.imencode(".png", overlay)
+    return base64.b64encode(buf).decode("utf-8")
 
-async def run_inference(file_bytes):
-    # 1. Load Audio with High-Quality Resampling
-    audio, _ = librosa.load(io.BytesIO(file_bytes), sr=16000, duration=4.0, res_type='soxr_hq')
-    
-    # 2. MANDATORY PEAK NORMALIZATION (Match Training)
+
+# ── Main inference entry-point ────────────────────────────────
+async def run_inference(file_bytes: bytes) -> dict:
+    """
+    Accepts raw audio bytes, returns verdict/confidence/heatmap dict.
+    Compatible with the existing Streamlit + report generator call sites.
+    """
+    SR = 16000
+    DURATION = 4.0
+    TARGET_LEN = int(SR * DURATION)
+
+    # Load & normalize
+    audio, _ = librosa.load(io.BytesIO(file_bytes), sr=SR, duration=DURATION, res_type="soxr_hq")
     peak = np.max(np.abs(audio))
     if peak > 1e-7:
         audio = audio / peak
 
-    # Standardize length
-    if len(audio) < 64000:
-        audio = np.pad(audio, (0, 64000 - len(audio)))
+    if len(audio) < TARGET_LEN:
+        audio = np.pad(audio, (0, TARGET_LEN - len(audio)))
     else:
-        audio = audio[:64000]
+        audio = audio[:TARGET_LEN]
 
-    # 3. Generate 224x224 Spectrogram
-    mel = librosa.feature.melspectrogram(y=audio, sr=16000, n_mels=224, n_fft=1024)
-    log_mel = librosa.power_to_db(mel, ref=np.max)
-    
-    # Process for ResNet
-    img_np = ((log_mel - log_mel.min()) / (log_mel.max() - log_mel.min() + 1e-6) * 255).astype(np.uint8)
-    img_rgb = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
-    img_resized = cv2.resize(img_rgb, (224, 224))
-    
-    input_tensor = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])(img_resized).unsqueeze(0).to(device)
+    # 3-channel feature image
+    feature_img = build_feature_image(audio, sr=SR)          # (224, 224, 3) uint8
+    pil_img = Image.fromarray(feature_img)
+    input_tensor = _transform(pil_img).unsqueeze(0).to(device)  # (1, 3, 224, 224)
 
-    # 4. Predict & Explain
+    # Scalar features
+    scalars_np = extract_scalar_features(audio, sr=SR)        # (8,) float32
+    scalars_tensor = torch.tensor(scalars_np, dtype=torch.float32).unsqueeze(0).to(device)
+
+    # Forward + backward for Grad-CAM
     model.zero_grad()
-    output = model(input_tensor)
+    output = model(input_tensor, scalars_tensor)
     prob = torch.sigmoid(output).item()
     output.backward()
-    
-    # Grad-CAM math
-    weights = torch.mean(gradients, dim=[0, 2, 3])
-    cam = torch.zeros(activations.shape[2:], dtype=torch.float32).to(device)
-    for i, w in enumerate(weights):
-        cam += w * activations[0, i, :, :]
-    
-    heatmap_b64 = process_gradcam(cam, img_resized)
+
+    # Grad-CAM overlay uses the mel channel (ch0) of the feature image as background
+    mel_ch = feature_img[:, :, 0]                             # 224×224 grayscale
+    mel_rgb = cv2.cvtColor(mel_ch, cv2.COLOR_GRAY2RGB)
+    heatmap_b64 = _compute_gradcam(mel_rgb)
+
+    is_spoof = prob > 0.5
+    confidence = prob if is_spoof else 1.0 - prob
 
     return {
-        "result": "SPOOF" if prob > 0.5 else "BONAFIDE",
-        "confidence": f"{prob if prob > 0.5 else 1-prob:.2%}",
-        "heatmap": heatmap_b64
+        "result":     "SPOOF" if is_spoof else "BONAFIDE",
+        "confidence": f"{confidence:.2%}",
+        "heatmap":    heatmap_b64,
+        "raw_prob":   prob,
     }
