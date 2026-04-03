@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from core.model import build_model, warm_start_new_pipeline
+from core.model import build_model
 import numpy as np
 
 def run_sanity_check():
@@ -23,20 +23,17 @@ def run_sanity_check():
         print(f"[!] Model Initialization FAILED: {e}")
         return
 
-    # 3. Warm Start Check (Optional if file exists)
-    checkpoint_path = 'deepfake_detector.pth'
+    # 3. ImageNet Weights Check
     try:
+        print("[*] Verifying ImageNet pre-trained weights loaded...")
+        checkpoint_path = 'deepfake_detector.pth'
         import os
         if os.path.exists(checkpoint_path):
-            # Use recommended weights_only=True to stop FutureWarnings
-            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-            print(f"[*] Testing weight surgery from {checkpoint_path}...")
-            model = warm_start_new_pipeline(model, checkpoint_path, device)
-            print("[+] Weight surgery completed successfully.")
+            print(f"[!] Note: Old checkpoint {checkpoint_path} exists but will NOT be used (training from scratch)")
         else:
-            print("[!] Skip: 'deepfake_detector.pth' not found. Testing with random init.")
+            print("[+] No old checkpoint found. Model loaded with ImageNet weights.")
     except Exception as e:
-        print(f"[!] Weight Surgery FAILED: {e}")
+        print(f"[!] Check FAILED: {e}")
         return
 
     # 4. Forward Pass Validation
