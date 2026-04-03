@@ -1,5 +1,6 @@
 import os
 import time
+import datetime
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -25,8 +26,9 @@ WAVEFAKE_DIR = "./data/wavefake-test/"
 ITW_DIR = "./data/release_in_the_wild/"
 
 # Training Hyper-parameters
-BATCH_SIZE_PER_GPU = 16
+BATCH_SIZE_PER_GPU = 8  # Reduced for stability
 NUM_EPOCHS = 10
+SUBSET_SIZE = 1000  # For debugging: use only 1000 samples per dataset
 SAVE_DIR = 'checkpoints'
 
 def setup_ddp(rank, world_size):
@@ -38,7 +40,9 @@ def setup_ddp(rank, world_size):
     os.environ['NCCL_IB_DISABLE'] = '1'
     os.environ['NUMBA_NUM_THREADS'] = '1'
     os.environ['NUMBA_DISABLE_JIT'] = '1'
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    # Increase timeout for slow dataset loading
+    os.environ['GLOO_SOCKET_TIMEOUT'] = '300'  # 5 minutes
+    dist.init_process_group("gloo", rank=rank, world_size=world_size, timeout=datetime.timedelta(minutes=30))
     torch.cuda.set_device(rank)
 
 def cleanup_ddp():
@@ -47,9 +51,9 @@ def cleanup_ddp():
 
 def get_dataloaders(rank, world_size):
     print(f"[*] Rank {rank}: Initializing Datasets...")
-    asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, subset_size=None, augment=True, augment_prob=0.3)
-    wavefake_data = WaveFakeDataset(WAVEFAKE_DIR, subset_size=None, augment=True, augment_prob=0.3)
-    itw_data = InTheWildDataset(ITW_DIR, subset_size=None, augment=True, augment_prob=0.3)
+    asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
+    wavefake_data = WaveFakeDataset(WAVEFAKE_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
+    itw_data = InTheWildDataset(ITW_DIR, subset_size=SUBSET_SIZE, augment=True, augment_prob=0.3)
     
     train_dataset = MultiDataset(asv_data, wavefake_data, itw_data)
     sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
