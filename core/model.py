@@ -56,6 +56,11 @@ def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
     2. Maps weights from legacy 1-channel ResNet50.
     """
     print(f"[*] Commencing weight surgery from: {checkpoint_path}")
+    
+    # Ensure device is a string or torch.device for map_location
+    if isinstance(device, int):
+        device = f"cuda:{device}"
+        
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     
     # Handle the conv1 averaging first (before or after prefix)
