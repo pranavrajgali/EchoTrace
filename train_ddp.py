@@ -29,7 +29,7 @@ ITW_DIR = '../data/in_the_wild/release_in_the_wild/'
 def setup_ddp(rank, world_size):
     """Initializes the distributed process group."""
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '12356'
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
@@ -58,10 +58,9 @@ def prepare_dataloader(rank, world_size):
         train_dataset, 
         batch_size=BATCH_SIZE_PER_GPU, 
         sampler=sampler, 
-        num_workers=2, 
+        num_workers=0, 
         pin_memory=True,
-        drop_last=True,
-        multiprocessing_context='spawn'
+        drop_last=True
     )
     return loader, sampler
 
