@@ -58,9 +58,10 @@ def prepare_dataloader(rank, world_size):
         train_dataset, 
         batch_size=BATCH_SIZE_PER_GPU, 
         sampler=sampler, 
-        num_workers=4, 
+        num_workers=2, 
         pin_memory=True,
-        drop_last=True
+        drop_last=True,
+        multiprocessing_context='spawn'
     )
     return loader, sampler
 

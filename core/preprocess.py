@@ -72,6 +72,8 @@ def extract_scalar_features(audio, sr=16000):
         f0_mean, f0_std, np.mean(centroid), np.std(centroid)
     ], dtype=np.float32)
     
+    # Replace any NaN/Inf from edge-case audio (silent, single-pitch, etc.)
+    scalars = np.nan_to_num(scalars, nan=0.0, posinf=1.0, neginf=0.0)
     # Normalize to [0,1] range for network stability
     return np.clip(scalars / (np.max(np.abs(scalars)) + 1e-9), 0, 1)
 
