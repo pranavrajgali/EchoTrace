@@ -123,6 +123,16 @@ class ASVDataset(Dataset):
         self.augment = augment
         self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
 
+        # If protocol_file doesn't exist, try to find it
+        if not os.path.exists(protocol_file):
+            # Try to find any .trn.txt file in the parent directory
+            protocol_dir = os.path.dirname(protocol_file)
+            if os.path.isdir(protocol_dir):
+                trn_files = glob.glob(os.path.join(protocol_dir, "*.trn.txt"))
+                if trn_files:
+                    protocol_file = trn_files[0]
+                    print(f"[*] Found protocol file: {protocol_file}")
+
         with open(protocol_file, 'r') as f:
             lines = f.readlines()
             if subset_size:
