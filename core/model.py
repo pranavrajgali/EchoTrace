@@ -49,40 +49,27 @@ class EchoTraceResNet(nn.Module):
         # 3. Pass through the classifier head to get the final logit
         return self.fc(combined_features)
 
-def build_model(device):
-    """Factory function to initialize the model on the specified device."""
-    model = EchoTraceResNet(num_scalars=8)
-    return model.to(device)
-
-def warm_start_new_pipeline(model, checkpoint_path, device):
+def warm_start_new_pipeline(model, checkpoint_path, device="cpu"):
     """
-    Performs weight surgery to adapt old model weights to the new architecture.
-    
-    1. Averages weights for 'conv1' to handle 3 distinct feature channels.
-    2. Strips old 'fc' weights to avoid dimension mismatch errors (2048 vs 2056).
-    3. Maps backbone keys to the new class structure.
+    Hardened weight surgery:
+    1. Handles both 'conv1' and 'resnet.conv1' for 3-channel averaging.
+    2. Maps weights from legacy 1-channel ResNet50.
     """
-    print(f"[*] Commencing warm start from: {checkpoint_path}")
+    print(f"[*] Commencing weight surgery from: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     
-    # Check if we need to modify the first convolution layer
-    # Old models used 3 identical mel channels; new models use 3 different feature types
-    if 'conv1.weight' in checkpoint:
-        old_conv1_weight = checkpoint['conv1.weight']
-        # Average the old RGB weights into a single-channel representation, 
-        # then expand back to 3 channels to provide a balanced initialization.
-        avg_weight = old_conv1_weight.mean(dim=1, keepdim=True)
-        checkpoint['conv1.weight'] = avg_weight.expand(-1, 3, -1, -1)
+    # Handle the conv1 averaging first (before or after prefix)
+    for key in ['conv1.weight', 'resnet.conv1.weight']:
+        if key in checkpoint:
+            w = checkpoint[key]
+            if w.shape[1] == 1:
+                print(f"[!] Averaging {key} for 3-channel input.")
+                checkpoint[key] = w.repeat(1, 3, 1, 1) / 3.0
     
-    # Remove all keys belonging to the old classifier head
-    # The new head has a different input dimension (2056) and layer structure
-    keys_to_remove = [k for k in checkpoint.keys() if k.startswith('fc.')]
-    for k in keys_to_remove:
-        del checkpoint[k]
-    
-    # Remap backbone keys if the checkpoint was saved without the 'resnet.' prefix
+    # Prefix mapping loop
     new_state_dict = {}
     for k, v in checkpoint.items():
+        # Map raw resnet keys to our wrapper
         if not k.startswith('resnet.') and not k.startswith('fc.'):
             new_state_dict[f"resnet.{k}"] = v
         else:

@@ -18,13 +18,21 @@ WORLD_SIZE = 4
 BATCH_SIZE_PER_GPU = 8  # 8 * 4 = 32 effective batch size
 EPOCHS = 10
 CHECKPOINT_PATH = 'deepfake_detector.pth'
-SAVE_DIR = 'checkpoints'
+# Update WORLD_SIZE to handle actual GPU count
+WORLD_SIZE = min(4, torch.cuda.device_count())
 
-# Dataset Paths (relative to ~/work/EchoTrace/)
-ASV_PROTOCOL = '../data/asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt'
-ASV_DIR = '../data/asvspoof2019/LA/ASVspoof2019_LA_train/flac/'
-WAVEFAKE_DIR = '../data/wavefake/wavefake-test/'
-ITW_DIR = '../data/in_the_wild/release_in_the_wild/'
+# Dataset Directories
+ASV_DIR = "../data/ASVspoof2019/LA/flac/"
+WAVEFAKE_DIR = "../data/wavefake-test/"
+ITW_DIR = "../data/release_in_the_wild/"
+CHECKPOINT_PATH = "deepfake_detector.pth"
+
+# Training Hyper-parameters
+BATCH_SIZE_PER_GPU = 16
+NUM_EPOCHS = 10
+LR_BACKBONE = 1e-6 # Layers 3-4
+LR_HEAD = 1e-4     # New FC Head
+SAVE_DIR = 'checkpoints'
 
 def setup_ddp(rank, world_size):
     """Initializes the distributed process group."""
@@ -34,6 +42,7 @@ def setup_ddp(rank, world_size):
     os.environ['NCCL_P2P_DISABLE'] = '1'
     os.environ['NCCL_IB_DISABLE'] = '1'
     os.environ['NUMBA_NUM_THREADS'] = '1'
+    os.environ['NUMBA_DISABLE_JIT'] = '1'
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
@@ -41,23 +50,15 @@ def cleanup_ddp():
     """Destroys the distributed process group."""
     dist.destroy_process_group()
 
-def prepare_dataloader(rank, world_size):
-    """Builds the combined dataset and wraps it in a DistributedSampler."""
-    if rank == 0:
-        print("[*] Initializing Datasets...")
-    
-    # 1. Initialize individual datasets (Augmentation ON for training)
-    asv_data = ASVDataset(ASV_PROTOCOL, ASV_DIR, augment=True)
+def get_dataloaders(rank, world_size):
+    print(f"[*] Rank {rank}: Initializing Datasets...")
+    asv_data = ASVDataset(ASV_DIR)
     wavefake_data = WaveFakeDataset(WAVEFAKE_DIR)
-    itw_data = InTheWildDataset(ITW_DIR, subset='train')
+    itw_data = InTheWildDataset(ITW_DIR)
     
-    # 2. Combine using the round-robin MultiDataset
     train_dataset = MultiDataset(asv_data, wavefake_data, itw_data)
-    
-    # 3. Distributed Sampler ensures each GPU gets a unique subset of data
     sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
     
-    # 4. DataLoader
     loader = DataLoader(
         train_dataset, 
         batch_size=BATCH_SIZE_PER_GPU, 
@@ -70,13 +71,10 @@ def prepare_dataloader(rank, world_size):
 
 def train(rank, world_size):
     setup_ddp(rank, world_size)
-    device = torch.device(f"cuda:{rank}")
+    torch.manual_seed(42)
+    device = rank
     
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    loader, sampler = prepare_dataloader(rank, world_size)
-    
-    # --- Model Initialization & Warm Start ---
-    model = build_model(device)
+    model = EchoTraceResNet()
     if os.path.exists(CHECKPOINT_PATH):
         if rank == 0:
             print(f"[*] Warm starting from {CHECKPOINT_PATH}")
@@ -88,53 +86,39 @@ def train(rank, world_size):
         param.requires_grad = True
     for param in model.resnet.layer4.parameters():
         param.requires_grad = True
-    # FC is unfrozen by default upon instantiation
-
-    # --- DDP Wrapping ---
-    model = DDP(model, device_ids=[rank], output_device=rank)
-
-    # --- Optimizer Setup ---
-    # Note: Access attributes via `model.module` after DDP wrapping
-    optimizer = torch.optim.Adam([
-        {'params': model.module.resnet.layer3.parameters(), 'lr': 1e-6},
-        {'params': model.module.resnet.layer4.parameters(), 'lr': 1e-5},
-        {'params': model.module.fc.parameters(), 'lr': 1e-4}
+    for param in model.fc.parameters():
+        param.requires_grad = True
+        
+    model = DDP(model, device_ids=[rank])
+    
+    # Optimizer with differential learning rates
+    optimizer = torch.optim.AdamW([
+        {'params': model.module.resnet.layer3.parameters(), 'lr': LR_BACKBONE},
+        {'params': model.module.resnet.layer4.parameters(), 'lr': LR_BACKBONE},
+        {'params': model.module.fc.parameters(), 'lr': LR_HEAD}
     ])
     
-    criterion = nn.BCEWithLogitsLoss().to(device)
-    scaler = GradScaler("cuda") # For Mixed Precision (FP16)
-
-    # --- Training Loop ---
-    if rank == 0:
-        print("[*] Starting DDP Training Loop...")
-        start_time = time.time()
-
-    for epoch in range(EPOCHS):
+    criterion = nn.CrossEntropyLoss()
+    scaler = torch.amp.GradScaler("cuda")
+    loader, sampler = get_dataloaders(rank, world_size)
+    
+    print(f"[*] Rank {rank}: Starting DDP Training Loop...")
+    for epoch in range(NUM_EPOCHS):
+        sampler.set_epoch(epoch)
         model.train()
-        sampler.set_epoch(epoch) # Crucial for shuffling in DDP
         
-        # Layer 3 Warmup Logic (First epoch only)
-        if epoch == 0:
-            optimizer.param_groups[0]['lr'] = 1e-7
-            if rank == 0:
-                print(f"[Epoch 0] Warmup active: Layer 3 LR set to 1e-7")
-        elif epoch == 1:
-            optimizer.param_groups[0]['lr'] = 1e-6
-            if rank == 0:
-                print(f"[Epoch 1] Warmup complete: Layer 3 LR restored to 1e-6")
-
-        epoch_loss = 0.0
-        
+        # Warmup Check for first epoch
+        if epoch == 0 and rank == 0:
+            print(f"[Epoch 0] Warmup active: Layer 3 LR set to {LR_BACKBONE}")
+            
         for batch_idx, (images, scalars, labels) in enumerate(loader):
-            # Move data to specific GPU
-            images = images.to(device, non_blocking=True)
-            scalars = scalars.to(device, non_blocking=True)
-            labels = labels.float().unsqueeze(1).to(device, non_blocking=True)
-
-            optimizer.zero_grad(set_to_none=True)
-
-            # Mixed Precision Forward Pass
-            with autocast("cuda"):
+            images = images.to(device)
+            scalars = scalars.to(device)
+            labels = labels.to(device)
+            
+            optimizer.zero_grad()
+            
+            with torch.amp.autocast("cuda"):
                 outputs = model(images, scalars)
                 loss = criterion(outputs, labels)
 

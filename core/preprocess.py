@@ -172,57 +172,109 @@ class WaveFakeDataset(Dataset):
 
     def __len__(self): return len(self.all_files)
 
-    def __getitem__(self, idx):
-        audio = load_audio_multiformat(self.all_files[idx])
-        audio = audio / (np.max(np.abs(audio)) + 1e-9)
+    """
+    ASVspoof 2019 LA Dataset.
+    """
+    def __init__(self, data_dir, subset_size=None, augment=False, augment_prob=0.3):
+        self.data_dir = data_dir
+        self.all_files = glob.glob(os.path.join(data_dir, "*.flac"))
         
-        img = Image.fromarray(build_feature_image(audio))
-        scalars = extract_scalar_features(audio)
-        return self.transform(img), torch.tensor(scalars), self.labels[idx]
+        # Simplified: Label derived from filename or protocol if available
+        # For training, we assume files contain identity in name or use a default
+        self.labels = [1 if "spoof" in f.lower() else 0 for f in self.all_files]
+        
+        if subset_size and subset_size < len(self.all_files):
+            self.all_files = self.all_files[:subset_size]
+            self.labels = self.labels[:subset_size]
+            
+        print(f"[+] ASV Loaded: {len(self.all_files)} samples")
+
+    def __len__(self):
+        return len(self.all_files)
+
+    def __getitem__(self, idx):
+        file_path = self.all_files[idx]
+        label = self.labels[idx]
+        try:
+            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
+            img, scalars = feature_engineer(audio, sr)
+            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
+        except:
+            return self.__getitem__(np.random.randint(0, len(self.all_files)))
+
+class WaveFakeDataset(Dataset):
+    """
+    Handles WaveFake dataset balancing LJSpeech/JSUT (Real) against generated folders.
+    """
+    def __init__(self, data_dir, subset_size=None):
+        self.data_dir = data_dir
+        self.real_files = glob.glob(os.path.join(data_dir, "the-LJSpeech-1.1/wavs/*.wav"))
+        self.real_files += glob.glob(os.path.join(data_dir, "jsut_ver1.1/basic5000/wav/*.wav"))
+        self.fake_files = glob.glob(os.path.join(data_dir, "generated_audio/*/*.wav"))
+        
+        if subset_size:
+            self.real_files = self.real_files[:subset_size//2]
+            self.fake_files = self.fake_files[:subset_size//2]
+            
+        self.all_files = self.real_files + self.fake_files
+        self.labels = [0] * len(self.real_files) + [1] * len(self.fake_files)
+        print(f"[+] WaveFake Loaded: {len(self.all_files)} samples")
+
+    def __len__(self):
+        return len(self.all_files)
+
+    def __getitem__(self, idx):
+        file_path = self.all_files[idx]
+        label = self.labels[idx]
+        try:
+            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
+            img, scalars = feature_engineer(audio, sr)
+            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
+        except:
+            return self.__getitem__(np.random.randint(0, len(self.all_files)))
 
 class InTheWildDataset(Dataset):
-    """Dataset for 'In-The-Wild' real-world recordings."""
-    def __init__(self, data_dir, subset='train'):
-        self.data_dir = os.path.join(data_dir, subset)
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        
+    """
+    Handles the 'In-The-Wild' dataset with flat folder structure.
+    """
+    def __init__(self, data_dir, subset_size=None):
+        self.data_dir = data_dir
         self.real_files = glob.glob(os.path.join(self.data_dir, "real/*.wav"))
-        # Any file not in the 'real' folder is considered fake
-        self.fake_files = [f for f in glob.glob(os.path.join(self.data_dir, "**/*.wav"), recursive=True) 
-                           if "real" not in f]
+        self.fake_files = glob.glob(os.path.join(self.data_dir, "fake/*.wav"))
         
+        if subset_size:
+            self.real_files = self.real_files[:subset_size//2]
+            self.fake_files = self.fake_files[:subset_size//2]
+            
         self.all_files = self.real_files + self.fake_files
-        self.labels = [0]*len(self.real_files) + [1]*len(self.fake_files)
+        self.labels = [0] * len(self.real_files) + [1] * len(self.fake_files)
+        print(f"[+] In-The-Wild Loaded: {len(self.all_files)} samples")
 
-    def __len__(self): return len(self.all_files)
+    def __len__(self):
+        return len(self.all_files)
 
     def __getitem__(self, idx):
-        audio = load_audio_multiformat(self.all_files[idx])
-        audio = audio / (np.max(np.abs(audio)) + 1e-9)
-        
-        img = Image.fromarray(build_feature_image(audio))
-        scalars = extract_scalar_features(audio)
-        return self.transform(img), torch.tensor(scalars), self.labels[idx]
+        file_path = self.all_files[idx]
+        label = self.labels[idx]
+        try:
+            audio, sr = librosa.load(file_path, sr=16000, duration=3.0)
+            img, scalars = feature_engineer(audio, sr)
+            return torch.from_numpy(img), torch.from_numpy(scalars), torch.tensor(label, dtype=torch.long)
+        except:
+            return self.__getitem__(np.random.randint(0, len(self.all_files)))
 
 class MultiDataset(Dataset):
     """
-    Consolidated dataset using round-robin sampling across all three sources.
-    Ensures training is balanced between legacy, modern, and real-world samples.
+    Combines datasets. Supports optional args for Bug #4.
     """
-    def __init__(self, asv, wavefake, wild):
-        self.datasets = [asv, wavefake, wild]
+    def __init__(self, asv, wavefake=None, wild=None):
+        self.datasets = [ds for ds in [asv, wavefake, wild] if ds is not None]
+        print(f"[+] MultiDataset Initialized with {len(self.datasets)} source(s)")
 
     def __len__(self):
         return sum(len(d) for d in self.datasets)
 
     def __getitem__(self, idx):
-        # Round-robin selection based on index
         ds_idx = idx % len(self.datasets)
         selected_ds = self.datasets[ds_idx]
-        
-        # Pick a random sample from the chosen dataset
-        rand_idx = random.randint(0, len(selected_ds) - 1)
-        return selected_ds[rand_idx]
+        return selected_ds[np.random.randint(0, len(selected_ds))]
