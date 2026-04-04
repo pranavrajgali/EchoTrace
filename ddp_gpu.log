@@ -1,0 +1,443 @@
+[21:49:16][rank0] ============================================================
+[21:49:16][rank0]   EchoTrace GPU-Accelerated DDP Training
+[21:49:16][rank0]   GPUs            : 4
+[21:49:16][rank0]   Total samples   : 199991
+[21:49:16][rank0]   Batch/GPU       : 64
+[21:49:16][rank0]   Effective batch : 256
+[21:49:16][rank0]   Epochs          : 10
+[21:49:16][rank0]   Trainable params: 16,018,433 / 24,561,729
+[21:49:16][rank0] ============================================================
+[21:49:43][rank0] Epoch 01/10 | Batch    0/781 ( 0.0%) | Loss: 0.6563
+[21:50:29][rank0] Epoch 01/10 | Batch   20/781 ( 2.6%) | Loss: 0.4654
+[21:51:11][rank0] Epoch 01/10 | Batch   40/781 ( 5.1%) | Loss: 0.3761
+[21:51:53][rank0] Epoch 01/10 | Batch   60/781 ( 7.7%) | Loss: 0.3560
+[21:52:39][rank0] Epoch 01/10 | Batch   80/781 (10.2%) | Loss: 0.3299
+[21:53:24][rank0] Epoch 01/10 | Batch  100/781 (12.8%) | Loss: 0.2207
+[21:54:11][rank0] Epoch 01/10 | Batch  120/781 (15.4%) | Loss: 0.2802
+[21:54:54][rank0] Epoch 01/10 | Batch  140/781 (17.9%) | Loss: 0.1797
+[21:55:37][rank0] Epoch 01/10 | Batch  160/781 (20.5%) | Loss: 0.1968
+[21:56:25][rank0] Epoch 01/10 | Batch  180/781 (23.0%) | Loss: 0.2456
+[21:57:12][rank0] Epoch 01/10 | Batch  200/781 (25.6%) | Loss: 0.2760
+[21:58:00][rank0] Epoch 01/10 | Batch  220/781 (28.2%) | Loss: 0.2218
+[21:58:41][rank0] Epoch 01/10 | Batch  240/781 (30.7%) | Loss: 0.0873
+[21:59:24][rank0] Epoch 01/10 | Batch  260/781 (33.3%) | Loss: 0.1639
+[22:00:09][rank0] Epoch 01/10 | Batch  280/781 (35.9%) | Loss: 0.1518
+[22:00:52][rank0] Epoch 01/10 | Batch  300/781 (38.4%) | Loss: 0.2235
+[22:01:43][rank0] Epoch 01/10 | Batch  320/781 (41.0%) | Loss: 0.2062
+[22:02:27][rank0] Epoch 01/10 | Batch  340/781 (43.5%) | Loss: 0.1156
+[22:03:12][rank0] Epoch 01/10 | Batch  360/781 (46.1%) | Loss: 0.2002
+[22:03:56][rank0] Epoch 01/10 | Batch  380/781 (48.7%) | Loss: 0.2393
+[22:04:48][rank0] Epoch 01/10 | Batch  400/781 (51.2%) | Loss: 0.2011
+[22:05:42][rank0] Epoch 01/10 | Batch  420/781 (53.8%) | Loss: 0.0695
+[22:06:26][rank0] Epoch 01/10 | Batch  440/781 (56.3%) | Loss: 0.0534
+[22:07:15][rank0] Epoch 01/10 | Batch  460/781 (58.9%) | Loss: 0.2237
+[22:08:03][rank0] Epoch 01/10 | Batch  480/781 (61.5%) | Loss: 0.0757
+[22:08:53][rank0] Epoch 01/10 | Batch  500/781 (64.0%) | Loss: 0.0920
+[22:09:40][rank0] Epoch 01/10 | Batch  520/781 (66.6%) | Loss: 0.2231
+[22:10:34][rank0] Epoch 01/10 | Batch  540/781 (69.1%) | Loss: 0.1294
+[22:11:25][rank0] Epoch 01/10 | Batch  560/781 (71.7%) | Loss: 0.0828
+[22:12:18][rank0] Epoch 01/10 | Batch  580/781 (74.3%) | Loss: 0.1306
+[22:13:05][rank0] Epoch 01/10 | Batch  600/781 (76.8%) | Loss: 0.1053
+[22:13:55][rank0] Epoch 01/10 | Batch  620/781 (79.4%) | Loss: 0.2217
+[22:14:45][rank0] Epoch 01/10 | Batch  640/781 (81.9%) | Loss: 0.1288
+[22:15:32][rank0] Epoch 01/10 | Batch  660/781 (84.5%) | Loss: 0.1959
+[22:16:20][rank0] Epoch 01/10 | Batch  680/781 (87.1%) | Loss: 0.0569
+[22:17:11][rank0] Epoch 01/10 | Batch  700/781 (89.6%) | Loss: 0.0789
+[22:18:00][rank0] Epoch 01/10 | Batch  720/781 (92.2%) | Loss: 0.0274
+[22:18:51][rank0] Epoch 01/10 | Batch  740/781 (94.8%) | Loss: 0.1379
+[22:19:40][rank0] Epoch 01/10 | Batch  760/781 (97.3%) | Loss: 0.0681
+[22:20:12][rank0] Epoch 01/10 | Batch  780/781 (99.9%) | Loss: 0.0576
+[22:20:12][rank0] [epoch 01] avg_loss=0.1744 | time=30.9m | best=0.1744 <- best
+[22:20:14][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_01.pth
+[22:20:22][rank0] Epoch 02/10 | Batch    0/781 ( 0.0%) | Loss: 0.0547
+[22:20:55][rank0] Epoch 02/10 | Batch   20/781 ( 2.6%) | Loss: 0.0704
+[22:21:32][rank0] Epoch 02/10 | Batch   40/781 ( 5.1%) | Loss: 0.1050
+[22:22:08][rank0] Epoch 02/10 | Batch   60/781 ( 7.7%) | Loss: 0.1036
+[22:22:47][rank0] Epoch 02/10 | Batch   80/781 (10.2%) | Loss: 0.0902
+[22:23:23][rank0] Epoch 02/10 | Batch  100/781 (12.8%) | Loss: 0.0373
+[22:24:04][rank0] Epoch 02/10 | Batch  120/781 (15.4%) | Loss: 0.1437
+[22:24:43][rank0] Epoch 02/10 | Batch  140/781 (17.9%) | Loss: 0.0721
+[22:25:26][rank0] Epoch 02/10 | Batch  160/781 (20.5%) | Loss: 0.1026
+[22:26:13][rank0] Epoch 02/10 | Batch  180/781 (23.0%) | Loss: 0.0387
+[22:27:00][rank0] Epoch 02/10 | Batch  200/781 (25.6%) | Loss: 0.0423
+[22:27:39][rank0] Epoch 02/10 | Batch  220/781 (28.2%) | Loss: 0.1542
+[22:28:20][rank0] Epoch 02/10 | Batch  240/781 (30.7%) | Loss: 0.0338
+[22:29:07][rank0] Epoch 02/10 | Batch  260/781 (33.3%) | Loss: 0.0660
+[22:29:47][rank0] Epoch 02/10 | Batch  280/781 (35.9%) | Loss: 0.0547
+[22:30:31][rank0] Epoch 02/10 | Batch  300/781 (38.4%) | Loss: 0.0857
+[22:31:17][rank0] Epoch 02/10 | Batch  320/781 (41.0%) | Loss: 0.0309
+[22:31:59][rank0] Epoch 02/10 | Batch  340/781 (43.5%) | Loss: 0.1323
+[22:32:39][rank0] Epoch 02/10 | Batch  360/781 (46.1%) | Loss: 0.0898
+[22:33:20][rank0] Epoch 02/10 | Batch  380/781 (48.7%) | Loss: 0.0540
+[22:34:04][rank0] Epoch 02/10 | Batch  400/781 (51.2%) | Loss: 0.0181
+[22:34:51][rank0] Epoch 02/10 | Batch  420/781 (53.8%) | Loss: 0.1036
+[22:35:34][rank0] Epoch 02/10 | Batch  440/781 (56.3%) | Loss: 0.0112
+[22:36:17][rank0] Epoch 02/10 | Batch  460/781 (58.9%) | Loss: 0.0284
+[22:37:01][rank0] Epoch 02/10 | Batch  480/781 (61.5%) | Loss: 0.0153
+[22:37:49][rank0] Epoch 02/10 | Batch  500/781 (64.0%) | Loss: 0.0585
+[22:38:30][rank0] Epoch 02/10 | Batch  520/781 (66.6%) | Loss: 0.0205
+[22:39:12][rank0] Epoch 02/10 | Batch  540/781 (69.1%) | Loss: 0.1238
+[22:39:58][rank0] Epoch 02/10 | Batch  560/781 (71.7%) | Loss: 0.0247
+[22:40:40][rank0] Epoch 02/10 | Batch  580/781 (74.3%) | Loss: 0.0577
+[22:41:19][rank0] Epoch 02/10 | Batch  600/781 (76.8%) | Loss: 0.0899
+[22:42:02][rank0] Epoch 02/10 | Batch  620/781 (79.4%) | Loss: 0.0553
+[22:42:49][rank0] Epoch 02/10 | Batch  640/781 (81.9%) | Loss: 0.0575
+[22:43:38][rank0] Epoch 02/10 | Batch  660/781 (84.5%) | Loss: 0.1153
+[22:44:23][rank0] Epoch 02/10 | Batch  680/781 (87.1%) | Loss: 0.0121
+[22:45:11][rank0] Epoch 02/10 | Batch  700/781 (89.6%) | Loss: 0.0104
+[22:45:51][rank0] Epoch 02/10 | Batch  720/781 (92.2%) | Loss: 0.0389
+[22:46:38][rank0] Epoch 02/10 | Batch  740/781 (94.8%) | Loss: 0.0950
+[22:47:20][rank0] Epoch 02/10 | Batch  760/781 (97.3%) | Loss: 0.0499
+[22:47:46][rank0] Epoch 02/10 | Batch  780/781 (99.9%) | Loss: 0.0463
+[22:47:46][rank0] [epoch 02] avg_loss=0.0640 | time=27.5m | best=0.0640 <- best
+[22:47:53][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_02.pth
+[22:48:03][rank0] Epoch 03/10 | Batch    0/781 ( 0.0%) | Loss: 0.0082
+[22:48:40][rank0] Epoch 03/10 | Batch   20/781 ( 2.6%) | Loss: 0.0198
+[22:49:16][rank0] Epoch 03/10 | Batch   40/781 ( 5.1%) | Loss: 0.0112
+[22:49:57][rank0] Epoch 03/10 | Batch   60/781 ( 7.7%) | Loss: 0.0341
+[22:50:33][rank0] Epoch 03/10 | Batch   80/781 (10.2%) | Loss: 0.0342
+[22:51:14][rank0] Epoch 03/10 | Batch  100/781 (12.8%) | Loss: 0.0327
+[22:51:55][rank0] Epoch 03/10 | Batch  120/781 (15.4%) | Loss: 0.0498
+[22:52:35][rank0] Epoch 03/10 | Batch  140/781 (17.9%) | Loss: 0.0085
+[22:53:18][rank0] Epoch 03/10 | Batch  160/781 (20.5%) | Loss: 0.0045
+[22:53:59][rank0] Epoch 03/10 | Batch  180/781 (23.0%) | Loss: 0.0777
+[22:54:39][rank0] Epoch 03/10 | Batch  200/781 (25.6%) | Loss: 0.0152
+[22:55:23][rank0] Epoch 03/10 | Batch  220/781 (28.2%) | Loss: 0.0257
+[22:56:09][rank0] Epoch 03/10 | Batch  240/781 (30.7%) | Loss: 0.0876
+[22:56:50][rank0] Epoch 03/10 | Batch  260/781 (33.3%) | Loss: 0.0158
+[22:57:27][rank0] Epoch 03/10 | Batch  280/781 (35.9%) | Loss: 0.0098
+[22:57:59][rank0] Epoch 03/10 | Batch  300/781 (38.4%) | Loss: 0.0099
+[22:58:38][rank0] Epoch 03/10 | Batch  320/781 (41.0%) | Loss: 0.0359
+[22:59:22][rank0] Epoch 03/10 | Batch  340/781 (43.5%) | Loss: 0.1054
+[23:00:03][rank0] Epoch 03/10 | Batch  360/781 (46.1%) | Loss: 0.0067
+[23:00:47][rank0] Epoch 03/10 | Batch  380/781 (48.7%) | Loss: 0.0035
+[23:01:29][rank0] Epoch 03/10 | Batch  400/781 (51.2%) | Loss: 0.0168
+[23:02:18][rank0] Epoch 03/10 | Batch  420/781 (53.8%) | Loss: 0.0400
+[23:02:58][rank0] Epoch 03/10 | Batch  440/781 (56.3%) | Loss: 0.0053
+[23:03:43][rank0] Epoch 03/10 | Batch  460/781 (58.9%) | Loss: 0.0107
+[23:04:20][rank0] Epoch 03/10 | Batch  480/781 (61.5%) | Loss: 0.0082
+[23:05:01][rank0] Epoch 03/10 | Batch  500/781 (64.0%) | Loss: 0.0235
+[23:05:42][rank0] Epoch 03/10 | Batch  520/781 (66.6%) | Loss: 0.0407
+[23:06:21][rank0] Epoch 03/10 | Batch  540/781 (69.1%) | Loss: 0.0164
+[23:07:07][rank0] Epoch 03/10 | Batch  560/781 (71.7%) | Loss: 0.0046
+[23:07:53][rank0] Epoch 03/10 | Batch  580/781 (74.3%) | Loss: 0.0282
+[23:08:36][rank0] Epoch 03/10 | Batch  600/781 (76.8%) | Loss: 0.0598
+[23:09:17][rank0] Epoch 03/10 | Batch  620/781 (79.4%) | Loss: 0.0088
+[23:09:56][rank0] Epoch 03/10 | Batch  640/781 (81.9%) | Loss: 0.0137
+[23:10:37][rank0] Epoch 03/10 | Batch  660/781 (84.5%) | Loss: 0.0172
+[23:11:18][rank0] Epoch 03/10 | Batch  680/781 (87.1%) | Loss: 0.1696
+[23:11:59][rank0] Epoch 03/10 | Batch  700/781 (89.6%) | Loss: 0.0152
+[23:12:40][rank0] Epoch 03/10 | Batch  720/781 (92.2%) | Loss: 0.0725
+[23:13:24][rank0] Epoch 03/10 | Batch  740/781 (94.8%) | Loss: 0.0466
+[23:14:02][rank0] Epoch 03/10 | Batch  760/781 (97.3%) | Loss: 0.0394
+[23:14:25][rank0] Epoch 03/10 | Batch  780/781 (99.9%) | Loss: 0.0508
+[23:14:25][rank0] [epoch 03] avg_loss=0.0329 | time=26.5m | best=0.0329 <- best
+[23:14:29][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_03.pth
+[23:14:39][rank0] Epoch 04/10 | Batch    0/781 ( 0.0%) | Loss: 0.0245
+[23:15:21][rank0] Epoch 04/10 | Batch   20/781 ( 2.6%) | Loss: 0.0015
+[23:16:00][rank0] Epoch 04/10 | Batch   40/781 ( 5.1%) | Loss: 0.0050
+[23:16:36][rank0] Epoch 04/10 | Batch   60/781 ( 7.7%) | Loss: 0.0107
+[23:17:15][rank0] Epoch 04/10 | Batch   80/781 (10.2%) | Loss: 0.0033
+[23:17:49][rank0] Epoch 04/10 | Batch  100/781 (12.8%) | Loss: 0.0016
+[23:18:25][rank0] Epoch 04/10 | Batch  120/781 (15.4%) | Loss: 0.0450
+[23:19:03][rank0] Epoch 04/10 | Batch  140/781 (17.9%) | Loss: 0.0039
+[23:19:42][rank0] Epoch 04/10 | Batch  160/781 (20.5%) | Loss: 0.0238
+[23:20:23][rank0] Epoch 04/10 | Batch  180/781 (23.0%) | Loss: 0.0048
+[23:21:03][rank0] Epoch 04/10 | Batch  200/781 (25.6%) | Loss: 0.0007
+[23:21:45][rank0] Epoch 04/10 | Batch  220/781 (28.2%) | Loss: 0.0196
+[23:22:26][rank0] Epoch 04/10 | Batch  240/781 (30.7%) | Loss: 0.0070
+[23:23:08][rank0] Epoch 04/10 | Batch  260/781 (33.3%) | Loss: 0.0448
+[23:23:49][rank0] Epoch 04/10 | Batch  280/781 (35.9%) | Loss: 0.0132
+[23:24:28][rank0] Epoch 04/10 | Batch  300/781 (38.4%) | Loss: 0.0240
+[23:25:07][rank0] Epoch 04/10 | Batch  320/781 (41.0%) | Loss: 0.0004
+[23:25:45][rank0] Epoch 04/10 | Batch  340/781 (43.5%) | Loss: 0.0116
+[23:26:27][rank0] Epoch 04/10 | Batch  360/781 (46.1%) | Loss: 0.0227
+[23:27:19][rank0] Epoch 04/10 | Batch  380/781 (48.7%) | Loss: 0.0373
+[23:28:03][rank0] Epoch 04/10 | Batch  400/781 (51.2%) | Loss: 0.0040
+[23:28:50][rank0] Epoch 04/10 | Batch  420/781 (53.8%) | Loss: 0.0030
+[23:29:38][rank0] Epoch 04/10 | Batch  440/781 (56.3%) | Loss: 0.0339
+[23:30:20][rank0] Epoch 04/10 | Batch  460/781 (58.9%) | Loss: 0.0228
+[23:31:04][rank0] Epoch 04/10 | Batch  480/781 (61.5%) | Loss: 0.0318
+[23:31:50][rank0] Epoch 04/10 | Batch  500/781 (64.0%) | Loss: 0.0065
+[23:32:32][rank0] Epoch 04/10 | Batch  520/781 (66.6%) | Loss: 0.0152
+[23:33:21][rank0] Epoch 04/10 | Batch  540/781 (69.1%) | Loss: 0.0121
+[23:34:05][rank0] Epoch 04/10 | Batch  560/781 (71.7%) | Loss: 0.0067
+[23:34:55][rank0] Epoch 04/10 | Batch  580/781 (74.3%) | Loss: 0.0017
+[23:35:32][rank0] Epoch 04/10 | Batch  600/781 (76.8%) | Loss: 0.0396
+[23:36:18][rank0] Epoch 04/10 | Batch  620/781 (79.4%) | Loss: 0.0120
+[23:37:10][rank0] Epoch 04/10 | Batch  640/781 (81.9%) | Loss: 0.0547
+[23:37:50][rank0] Epoch 04/10 | Batch  660/781 (84.5%) | Loss: 0.0037
+[23:38:32][rank0] Epoch 04/10 | Batch  680/781 (87.1%) | Loss: 0.0347
+[23:39:16][rank0] Epoch 04/10 | Batch  700/781 (89.6%) | Loss: 0.1995
+[23:40:02][rank0] Epoch 04/10 | Batch  720/781 (92.2%) | Loss: 0.0026
+[23:40:46][rank0] Epoch 04/10 | Batch  740/781 (94.8%) | Loss: 0.0154
+[23:41:36][rank0] Epoch 04/10 | Batch  760/781 (97.3%) | Loss: 0.0012
+[23:42:03][rank0] Epoch 04/10 | Batch  780/781 (99.9%) | Loss: 0.0010
+[23:42:03][rank0] [epoch 04] avg_loss=0.0162 | time=27.6m | best=0.0162 <- best
+[23:42:05][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_04.pth
+[23:42:15][rank0] Epoch 05/10 | Batch    0/781 ( 0.0%) | Loss: 0.0015
+[23:42:54][rank0] Epoch 05/10 | Batch   20/781 ( 2.6%) | Loss: 0.0088
+[23:43:33][rank0] Epoch 05/10 | Batch   40/781 ( 5.1%) | Loss: 0.0030
+[23:44:08][rank0] Epoch 05/10 | Batch   60/781 ( 7.7%) | Loss: 0.0111
+[23:44:51][rank0] Epoch 05/10 | Batch   80/781 (10.2%) | Loss: 0.0013
+[23:45:27][rank0] Epoch 05/10 | Batch  100/781 (12.8%) | Loss: 0.0112
+[23:46:07][rank0] Epoch 05/10 | Batch  120/781 (15.4%) | Loss: 0.0203
+[23:46:56][rank0] Epoch 05/10 | Batch  140/781 (17.9%) | Loss: 0.0101
+[23:47:39][rank0] Epoch 05/10 | Batch  160/781 (20.5%) | Loss: 0.0133
+[23:48:15][rank0] Epoch 05/10 | Batch  180/781 (23.0%) | Loss: 0.0183
+[23:48:57][rank0] Epoch 05/10 | Batch  200/781 (25.6%) | Loss: 0.0016
+[23:49:44][rank0] Epoch 05/10 | Batch  220/781 (28.2%) | Loss: 0.0032
+[23:50:23][rank0] Epoch 05/10 | Batch  240/781 (30.7%) | Loss: 0.0074
+[23:51:07][rank0] Epoch 05/10 | Batch  260/781 (33.3%) | Loss: 0.0011
+[23:51:52][rank0] Epoch 05/10 | Batch  280/781 (35.9%) | Loss: 0.0024
+[23:52:31][rank0] Epoch 05/10 | Batch  300/781 (38.4%) | Loss: 0.0003
+[23:53:15][rank0] Epoch 05/10 | Batch  320/781 (41.0%) | Loss: 0.0019
+[23:53:54][rank0] Epoch 05/10 | Batch  340/781 (43.5%) | Loss: 0.0019
+[23:54:42][rank0] Epoch 05/10 | Batch  360/781 (46.1%) | Loss: 0.0021
+[23:55:21][rank0] Epoch 05/10 | Batch  380/781 (48.7%) | Loss: 0.0006
+[23:56:07][rank0] Epoch 05/10 | Batch  400/781 (51.2%) | Loss: 0.0088
+[23:56:51][rank0] Epoch 05/10 | Batch  420/781 (53.8%) | Loss: 0.0100
+[23:57:29][rank0] Epoch 05/10 | Batch  440/781 (56.3%) | Loss: 0.0001
+[23:58:10][rank0] Epoch 05/10 | Batch  460/781 (58.9%) | Loss: 0.0085
+[23:58:55][rank0] Epoch 05/10 | Batch  480/781 (61.5%) | Loss: 0.0083
+[23:59:36][rank0] Epoch 05/10 | Batch  500/781 (64.0%) | Loss: 0.0012
+[00:00:15][rank0] Epoch 05/10 | Batch  520/781 (66.6%) | Loss: 0.0018
+[00:00:58][rank0] Epoch 05/10 | Batch  540/781 (69.1%) | Loss: 0.0024
+[00:01:45][rank0] Epoch 05/10 | Batch  560/781 (71.7%) | Loss: 0.1007
+[00:02:24][rank0] Epoch 05/10 | Batch  580/781 (74.3%) | Loss: 0.0002
+[00:03:07][rank0] Epoch 05/10 | Batch  600/781 (76.8%) | Loss: 0.0004
+[00:03:51][rank0] Epoch 05/10 | Batch  620/781 (79.4%) | Loss: 0.0312
+[00:04:35][rank0] Epoch 05/10 | Batch  640/781 (81.9%) | Loss: 0.0277
+[00:05:15][rank0] Epoch 05/10 | Batch  660/781 (84.5%) | Loss: 0.0065
+[00:06:00][rank0] Epoch 05/10 | Batch  680/781 (87.1%) | Loss: 0.0008
+[00:06:44][rank0] Epoch 05/10 | Batch  700/781 (89.6%) | Loss: 0.0026
+[00:07:24][rank0] Epoch 05/10 | Batch  720/781 (92.2%) | Loss: 0.0522
+[00:08:06][rank0] Epoch 05/10 | Batch  740/781 (94.8%) | Loss: 0.0002
+[00:08:48][rank0] Epoch 05/10 | Batch  760/781 (97.3%) | Loss: 0.0036
+[00:09:15][rank0] Epoch 05/10 | Batch  780/781 (99.9%) | Loss: 0.0359
+[00:09:15][rank0] [epoch 05] avg_loss=0.0087 | time=27.2m | best=0.0087 <- best
+[00:09:23][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_05.pth
+[00:09:30][rank0] Epoch 06/10 | Batch    0/781 ( 0.0%) | Loss: 0.0002
+[00:10:06][rank0] Epoch 06/10 | Batch   20/781 ( 2.6%) | Loss: 0.0008
+[00:10:47][rank0] Epoch 06/10 | Batch   40/781 ( 5.1%) | Loss: 0.0034
+[00:11:25][rank0] Epoch 06/10 | Batch   60/781 ( 7.7%) | Loss: 0.0007
+[00:12:02][rank0] Epoch 06/10 | Batch   80/781 (10.2%) | Loss: 0.0104
+[00:12:44][rank0] Epoch 06/10 | Batch  100/781 (12.8%) | Loss: 0.0019
+[00:13:25][rank0] Epoch 06/10 | Batch  120/781 (15.4%) | Loss: 0.0003
+[00:14:07][rank0] Epoch 06/10 | Batch  140/781 (17.9%) | Loss: 0.0491
+[00:14:51][rank0] Epoch 06/10 | Batch  160/781 (20.5%) | Loss: 0.0003
+[00:15:33][rank0] Epoch 06/10 | Batch  180/781 (23.0%) | Loss: 0.0010
+[00:16:10][rank0] Epoch 06/10 | Batch  200/781 (25.6%) | Loss: 0.0003
+[00:16:47][rank0] Epoch 06/10 | Batch  220/781 (28.2%) | Loss: 0.0002
+[00:17:28][rank0] Epoch 06/10 | Batch  240/781 (30.7%) | Loss: 0.0005
+[00:18:09][rank0] Epoch 06/10 | Batch  260/781 (33.3%) | Loss: 0.0059
+[00:18:52][rank0] Epoch 06/10 | Batch  280/781 (35.9%) | Loss: 0.0003
+[00:19:33][rank0] Epoch 06/10 | Batch  300/781 (38.4%) | Loss: 0.0001
+[00:20:11][rank0] Epoch 06/10 | Batch  320/781 (41.0%) | Loss: 0.0001
+[00:20:50][rank0] Epoch 06/10 | Batch  340/781 (43.5%) | Loss: 0.0001
+[00:21:24][rank0] Epoch 06/10 | Batch  360/781 (46.1%) | Loss: 0.0002
+[00:22:06][rank0] Epoch 06/10 | Batch  380/781 (48.7%) | Loss: 0.0016
+[00:22:45][rank0] Epoch 06/10 | Batch  400/781 (51.2%) | Loss: 0.0001
+[00:23:26][rank0] Epoch 06/10 | Batch  420/781 (53.8%) | Loss: 0.0001
+[00:24:06][rank0] Epoch 06/10 | Batch  440/781 (56.3%) | Loss: 0.0049
+[00:24:48][rank0] Epoch 06/10 | Batch  460/781 (58.9%) | Loss: 0.0003
+[00:25:33][rank0] Epoch 06/10 | Batch  480/781 (61.5%) | Loss: 0.0002
+[00:26:14][rank0] Epoch 06/10 | Batch  500/781 (64.0%) | Loss: 0.0000
+[00:26:55][rank0] Epoch 06/10 | Batch  520/781 (66.6%) | Loss: 0.0000
+[00:27:37][rank0] Epoch 06/10 | Batch  540/781 (69.1%) | Loss: 0.0001
+[00:28:18][rank0] Epoch 06/10 | Batch  560/781 (71.7%) | Loss: 0.0478
+[00:28:57][rank0] Epoch 06/10 | Batch  580/781 (74.3%) | Loss: 0.0272
+[00:29:37][rank0] Epoch 06/10 | Batch  600/781 (76.8%) | Loss: 0.0029
+[00:30:19][rank0] Epoch 06/10 | Batch  620/781 (79.4%) | Loss: 0.0001
+[00:30:58][rank0] Epoch 06/10 | Batch  640/781 (81.9%) | Loss: 0.0016
+[00:31:40][rank0] Epoch 06/10 | Batch  660/781 (84.5%) | Loss: 0.0031
+[00:32:21][rank0] Epoch 06/10 | Batch  680/781 (87.1%) | Loss: 0.0002
+[00:33:00][rank0] Epoch 06/10 | Batch  700/781 (89.6%) | Loss: 0.0494
+[00:33:42][rank0] Epoch 06/10 | Batch  720/781 (92.2%) | Loss: 0.0007
+[00:34:15][rank0] Epoch 06/10 | Batch  740/781 (94.8%) | Loss: 0.0014
+[00:34:57][rank0] Epoch 06/10 | Batch  760/781 (97.3%) | Loss: 0.0001
+[00:35:21][rank0] Epoch 06/10 | Batch  780/781 (99.9%) | Loss: 0.0039
+[00:35:21][rank0] [epoch 06] avg_loss=0.0052 | time=26.0m | best=0.0052 <- best
+[00:35:22][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_06.pth
+[00:35:31][rank0] Epoch 07/10 | Batch    0/781 ( 0.0%) | Loss: 0.0001
+[00:36:09][rank0] Epoch 07/10 | Batch   20/781 ( 2.6%) | Loss: 0.0001
+[00:36:49][rank0] Epoch 07/10 | Batch   40/781 ( 5.1%) | Loss: 0.0007
+[00:37:28][rank0] Epoch 07/10 | Batch   60/781 ( 7.7%) | Loss: 0.0001
+[00:38:08][rank0] Epoch 07/10 | Batch   80/781 (10.2%) | Loss: 0.0058
+[00:38:46][rank0] Epoch 07/10 | Batch  100/781 (12.8%) | Loss: 0.0006
+[00:39:28][rank0] Epoch 07/10 | Batch  120/781 (15.4%) | Loss: 0.0458
+[00:40:09][rank0] Epoch 07/10 | Batch  140/781 (17.9%) | Loss: 0.0028
+[00:40:56][rank0] Epoch 07/10 | Batch  160/781 (20.5%) | Loss: 0.0001
+[00:41:33][rank0] Epoch 07/10 | Batch  180/781 (23.0%) | Loss: 0.0000
+[00:42:17][rank0] Epoch 07/10 | Batch  200/781 (25.6%) | Loss: 0.0115
+[00:42:59][rank0] Epoch 07/10 | Batch  220/781 (28.2%) | Loss: 0.0000
+[00:43:41][rank0] Epoch 07/10 | Batch  240/781 (30.7%) | Loss: 0.0007
+[00:44:24][rank0] Epoch 07/10 | Batch  260/781 (33.3%) | Loss: 0.0077
+[00:45:06][rank0] Epoch 07/10 | Batch  280/781 (35.9%) | Loss: 0.0001
+[00:45:49][rank0] Epoch 07/10 | Batch  300/781 (38.4%) | Loss: 0.0005
+[00:46:33][rank0] Epoch 07/10 | Batch  320/781 (41.0%) | Loss: 0.0002
+[00:47:14][rank0] Epoch 07/10 | Batch  340/781 (43.5%) | Loss: 0.0000
+[00:47:54][rank0] Epoch 07/10 | Batch  360/781 (46.1%) | Loss: 0.0004
+[00:48:37][rank0] Epoch 07/10 | Batch  380/781 (48.7%) | Loss: 0.0035
+[00:49:20][rank0] Epoch 07/10 | Batch  400/781 (51.2%) | Loss: 0.0021
+[00:50:02][rank0] Epoch 07/10 | Batch  420/781 (53.8%) | Loss: 0.0000
+[00:50:48][rank0] Epoch 07/10 | Batch  440/781 (56.3%) | Loss: 0.0006
+[00:51:31][rank0] Epoch 07/10 | Batch  460/781 (58.9%) | Loss: 0.0000
+[00:52:14][rank0] Epoch 07/10 | Batch  480/781 (61.5%) | Loss: 0.0002
+[00:52:56][rank0] Epoch 07/10 | Batch  500/781 (64.0%) | Loss: 0.0006
+[00:53:34][rank0] Epoch 07/10 | Batch  520/781 (66.6%) | Loss: 0.0006
+[00:54:15][rank0] Epoch 07/10 | Batch  540/781 (69.1%) | Loss: 0.0012
+[00:54:58][rank0] Epoch 07/10 | Batch  560/781 (71.7%) | Loss: 0.0226
+[00:55:47][rank0] Epoch 07/10 | Batch  580/781 (74.3%) | Loss: 0.0000
+[00:56:25][rank0] Epoch 07/10 | Batch  600/781 (76.8%) | Loss: 0.0001
+[00:57:13][rank0] Epoch 07/10 | Batch  620/781 (79.4%) | Loss: 0.0056
+[00:57:58][rank0] Epoch 07/10 | Batch  640/781 (81.9%) | Loss: 0.0007
+[00:58:47][rank0] Epoch 07/10 | Batch  660/781 (84.5%) | Loss: 0.0022
+[00:59:28][rank0] Epoch 07/10 | Batch  680/781 (87.1%) | Loss: 0.0002
+[01:00:07][rank0] Epoch 07/10 | Batch  700/781 (89.6%) | Loss: 0.0014
+[01:00:47][rank0] Epoch 07/10 | Batch  720/781 (92.2%) | Loss: 0.0240
+[01:01:26][rank0] Epoch 07/10 | Batch  740/781 (94.8%) | Loss: 0.0001
+[01:02:10][rank0] Epoch 07/10 | Batch  760/781 (97.3%) | Loss: 0.0068
+[01:02:33][rank0] Epoch 07/10 | Batch  780/781 (99.9%) | Loss: 0.0000
+[01:02:33][rank0] [epoch 07] avg_loss=0.0039 | time=27.2m | best=0.0039 <- best
+[01:02:48][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_07.pth
+[01:02:55][rank0] Epoch 08/10 | Batch    0/781 ( 0.0%) | Loss: 0.0001
+[01:03:32][rank0] Epoch 08/10 | Batch   20/781 ( 2.6%) | Loss: 0.0001
+[01:04:07][rank0] Epoch 08/10 | Batch   40/781 ( 5.1%) | Loss: 0.0002
+[01:04:47][rank0] Epoch 08/10 | Batch   60/781 ( 7.7%) | Loss: 0.0000
+[01:05:29][rank0] Epoch 08/10 | Batch   80/781 (10.2%) | Loss: 0.0007
+[01:06:07][rank0] Epoch 08/10 | Batch  100/781 (12.8%) | Loss: 0.0001
+[01:06:49][rank0] Epoch 08/10 | Batch  120/781 (15.4%) | Loss: 0.0004
+[01:07:29][rank0] Epoch 08/10 | Batch  140/781 (17.9%) | Loss: 0.0105
+[01:08:15][rank0] Epoch 08/10 | Batch  160/781 (20.5%) | Loss: 0.0001
+[01:08:55][rank0] Epoch 08/10 | Batch  180/781 (23.0%) | Loss: 0.0001
+[01:09:32][rank0] Epoch 08/10 | Batch  200/781 (25.6%) | Loss: 0.0002
+[01:10:09][rank0] Epoch 08/10 | Batch  220/781 (28.2%) | Loss: 0.0001
+[01:10:52][rank0] Epoch 08/10 | Batch  240/781 (30.7%) | Loss: 0.0001
+[01:11:33][rank0] Epoch 08/10 | Batch  260/781 (33.3%) | Loss: 0.0003
+[01:12:13][rank0] Epoch 08/10 | Batch  280/781 (35.9%) | Loss: 0.0001
+[01:12:56][rank0] Epoch 08/10 | Batch  300/781 (38.4%) | Loss: 0.0000
+[01:13:36][rank0] Epoch 08/10 | Batch  320/781 (41.0%) | Loss: 0.0001
+[01:14:22][rank0] Epoch 08/10 | Batch  340/781 (43.5%) | Loss: 0.0003
+[01:15:04][rank0] Epoch 08/10 | Batch  360/781 (46.1%) | Loss: 0.0009
+[01:15:45][rank0] Epoch 08/10 | Batch  380/781 (48.7%) | Loss: 0.0002
+[01:16:25][rank0] Epoch 08/10 | Batch  400/781 (51.2%) | Loss: 0.1248
+[01:17:06][rank0] Epoch 08/10 | Batch  420/781 (53.8%) | Loss: 0.0001
+[01:17:55][rank0] Epoch 08/10 | Batch  440/781 (56.3%) | Loss: 0.0002
+[01:18:32][rank0] Epoch 08/10 | Batch  460/781 (58.9%) | Loss: 0.0000
+[01:19:15][rank0] Epoch 08/10 | Batch  480/781 (61.5%) | Loss: 0.0001
+[01:19:57][rank0] Epoch 08/10 | Batch  500/781 (64.0%) | Loss: 0.0000
+[01:20:41][rank0] Epoch 08/10 | Batch  520/781 (66.6%) | Loss: 0.0019
+[01:21:22][rank0] Epoch 08/10 | Batch  540/781 (69.1%) | Loss: 0.0000
+[01:22:05][rank0] Epoch 08/10 | Batch  560/781 (71.7%) | Loss: 0.0000
+[01:22:46][rank0] Epoch 08/10 | Batch  580/781 (74.3%) | Loss: 0.0000
+[01:23:28][rank0] Epoch 08/10 | Batch  600/781 (76.8%) | Loss: 0.0002
+[01:24:12][rank0] Epoch 08/10 | Batch  620/781 (79.4%) | Loss: 0.0000
+[01:24:53][rank0] Epoch 08/10 | Batch  640/781 (81.9%) | Loss: 0.0139
+[01:25:34][rank0] Epoch 08/10 | Batch  660/781 (84.5%) | Loss: 0.0005
+[01:26:15][rank0] Epoch 08/10 | Batch  680/781 (87.1%) | Loss: 0.0001
+[01:26:52][rank0] Epoch 08/10 | Batch  700/781 (89.6%) | Loss: 0.0002
+[01:27:32][rank0] Epoch 08/10 | Batch  720/781 (92.2%) | Loss: 0.0004
+[01:28:12][rank0] Epoch 08/10 | Batch  740/781 (94.8%) | Loss: 0.0000
+[01:28:52][rank0] Epoch 08/10 | Batch  760/781 (97.3%) | Loss: 0.0000
+[01:29:20][rank0] Epoch 08/10 | Batch  780/781 (99.9%) | Loss: 0.0005
+[01:29:20][rank0] [epoch 08] avg_loss=0.0034 | time=26.5m | best=0.0034 <- best
+[01:29:29][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_08.pth
+[01:29:40][rank0] Epoch 09/10 | Batch    0/781 ( 0.0%) | Loss: 0.0001
+[01:30:22][rank0] Epoch 09/10 | Batch   20/781 ( 2.6%) | Loss: 0.0001
+[01:30:58][rank0] Epoch 09/10 | Batch   40/781 ( 5.1%) | Loss: 0.0007
+[01:31:31][rank0] Epoch 09/10 | Batch   60/781 ( 7.7%) | Loss: 0.0245
+[01:32:09][rank0] Epoch 09/10 | Batch   80/781 (10.2%) | Loss: 0.0139
+[01:32:48][rank0] Epoch 09/10 | Batch  100/781 (12.8%) | Loss: 0.0000
+[01:33:29][rank0] Epoch 09/10 | Batch  120/781 (15.4%) | Loss: 0.0010
+[01:34:11][rank0] Epoch 09/10 | Batch  140/781 (17.9%) | Loss: 0.0002
+[01:34:45][rank0] Epoch 09/10 | Batch  160/781 (20.5%) | Loss: 0.0000
+[01:35:25][rank0] Epoch 09/10 | Batch  180/781 (23.0%) | Loss: 0.0000
+[01:36:10][rank0] Epoch 09/10 | Batch  200/781 (25.6%) | Loss: 0.0000
+[01:36:41][rank0] Epoch 09/10 | Batch  220/781 (28.2%) | Loss: 0.0010
+[01:37:24][rank0] Epoch 09/10 | Batch  240/781 (30.7%) | Loss: 0.0000
+[01:38:04][rank0] Epoch 09/10 | Batch  260/781 (33.3%) | Loss: 0.0001
+[01:38:43][rank0] Epoch 09/10 | Batch  280/781 (35.9%) | Loss: 0.0010
+[01:39:19][rank0] Epoch 09/10 | Batch  300/781 (38.4%) | Loss: 0.0000
+[01:39:57][rank0] Epoch 09/10 | Batch  320/781 (41.0%) | Loss: 0.0001
+[01:40:33][rank0] Epoch 09/10 | Batch  340/781 (43.5%) | Loss: 0.0001
+[01:41:17][rank0] Epoch 09/10 | Batch  360/781 (46.1%) | Loss: 0.0009
+[01:41:55][rank0] Epoch 09/10 | Batch  380/781 (48.7%) | Loss: 0.0056
+[01:42:37][rank0] Epoch 09/10 | Batch  400/781 (51.2%) | Loss: 0.0000
+[01:43:16][rank0] Epoch 09/10 | Batch  420/781 (53.8%) | Loss: 0.0002
+[01:43:56][rank0] Epoch 09/10 | Batch  440/781 (56.3%) | Loss: 0.0000
+[01:44:34][rank0] Epoch 09/10 | Batch  460/781 (58.9%) | Loss: 0.0000
+[01:45:10][rank0] Epoch 09/10 | Batch  480/781 (61.5%) | Loss: 0.0000
+[01:45:55][rank0] Epoch 09/10 | Batch  500/781 (64.0%) | Loss: 0.0000
+[01:46:34][rank0] Epoch 09/10 | Batch  520/781 (66.6%) | Loss: 0.0005
+[01:47:13][rank0] Epoch 09/10 | Batch  540/781 (69.1%) | Loss: 0.0001
+[01:47:54][rank0] Epoch 09/10 | Batch  560/781 (71.7%) | Loss: 0.0003
+[01:48:35][rank0] Epoch 09/10 | Batch  580/781 (74.3%) | Loss: 0.0003
+[01:49:13][rank0] Epoch 09/10 | Batch  600/781 (76.8%) | Loss: 0.0001
+[01:49:51][rank0] Epoch 09/10 | Batch  620/781 (79.4%) | Loss: 0.0019
+[01:50:31][rank0] Epoch 09/10 | Batch  640/781 (81.9%) | Loss: 0.0002
+[01:51:11][rank0] Epoch 09/10 | Batch  660/781 (84.5%) | Loss: 0.0000
+[01:51:51][rank0] Epoch 09/10 | Batch  680/781 (87.1%) | Loss: 0.0035
+[01:52:28][rank0] Epoch 09/10 | Batch  700/781 (89.6%) | Loss: 0.0004
+[01:53:06][rank0] Epoch 09/10 | Batch  720/781 (92.2%) | Loss: 0.0000
+[01:53:45][rank0] Epoch 09/10 | Batch  740/781 (94.8%) | Loss: 0.0000
+[01:54:24][rank0] Epoch 09/10 | Batch  760/781 (97.3%) | Loss: 0.0000
+[01:54:54][rank0] Epoch 09/10 | Batch  780/781 (99.9%) | Loss: 0.0051
+[01:54:54][rank0] [epoch 09] avg_loss=0.0022 | time=25.4m | best=0.0022 <- best
+[01:54:55][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_09.pth
+[01:55:03][rank0] Epoch 10/10 | Batch    0/781 ( 0.0%) | Loss: 0.0000
+[01:55:41][rank0] Epoch 10/10 | Batch   20/781 ( 2.6%) | Loss: 0.0001
+[01:56:20][rank0] Epoch 10/10 | Batch   40/781 ( 5.1%) | Loss: 0.0000
+[01:57:00][rank0] Epoch 10/10 | Batch   60/781 ( 7.7%) | Loss: 0.0002
+[01:57:36][rank0] Epoch 10/10 | Batch   80/781 (10.2%) | Loss: 0.0000
+[01:58:18][rank0] Epoch 10/10 | Batch  100/781 (12.8%) | Loss: 0.0000
+[01:58:56][rank0] Epoch 10/10 | Batch  120/781 (15.4%) | Loss: 0.0006
+[01:59:32][rank0] Epoch 10/10 | Batch  140/781 (17.9%) | Loss: 0.0001
+[02:00:10][rank0] Epoch 10/10 | Batch  160/781 (20.5%) | Loss: 0.0000
+[02:00:51][rank0] Epoch 10/10 | Batch  180/781 (23.0%) | Loss: 0.0003
+[02:01:28][rank0] Epoch 10/10 | Batch  200/781 (25.6%) | Loss: 0.0006
+[02:02:07][rank0] Epoch 10/10 | Batch  220/781 (28.2%) | Loss: 0.0010
+[02:02:49][rank0] Epoch 10/10 | Batch  240/781 (30.7%) | Loss: 0.0000
+[02:03:29][rank0] Epoch 10/10 | Batch  260/781 (33.3%) | Loss: 0.0000
+[02:04:06][rank0] Epoch 10/10 | Batch  280/781 (35.9%) | Loss: 0.0001
+[02:04:44][rank0] Epoch 10/10 | Batch  300/781 (38.4%) | Loss: 0.0000
+[02:05:21][rank0] Epoch 10/10 | Batch  320/781 (41.0%) | Loss: 0.0000
+[02:05:57][rank0] Epoch 10/10 | Batch  340/781 (43.5%) | Loss: 0.0002
+[02:06:36][rank0] Epoch 10/10 | Batch  360/781 (46.1%) | Loss: 0.0000
+[02:07:14][rank0] Epoch 10/10 | Batch  380/781 (48.7%) | Loss: 0.0000
+[02:07:53][rank0] Epoch 10/10 | Batch  400/781 (51.2%) | Loss: 0.0000
+[02:08:30][rank0] Epoch 10/10 | Batch  420/781 (53.8%) | Loss: 0.0000
+[02:09:06][rank0] Epoch 10/10 | Batch  440/781 (56.3%) | Loss: 0.0000
+[02:09:48][rank0] Epoch 10/10 | Batch  460/781 (58.9%) | Loss: 0.0000
+[02:10:26][rank0] Epoch 10/10 | Batch  480/781 (61.5%) | Loss: 0.0002
+[02:11:00][rank0] Epoch 10/10 | Batch  500/781 (64.0%) | Loss: 0.0000
+[02:11:38][rank0] Epoch 10/10 | Batch  520/781 (66.6%) | Loss: 0.0001
+[02:12:16][rank0] Epoch 10/10 | Batch  540/781 (69.1%) | Loss: 0.0001
+[02:12:54][rank0] Epoch 10/10 | Batch  560/781 (71.7%) | Loss: 0.0001
+[02:13:31][rank0] Epoch 10/10 | Batch  580/781 (74.3%) | Loss: 0.0002
+[02:14:12][rank0] Epoch 10/10 | Batch  600/781 (76.8%) | Loss: 0.0002
+[02:14:50][rank0] Epoch 10/10 | Batch  620/781 (79.4%) | Loss: 0.0000
+[02:15:32][rank0] Epoch 10/10 | Batch  640/781 (81.9%) | Loss: 0.0000
+[02:16:11][rank0] Epoch 10/10 | Batch  660/781 (84.5%) | Loss: 0.0002
+[02:16:53][rank0] Epoch 10/10 | Batch  680/781 (87.1%) | Loss: 0.0000
+[02:17:32][rank0] Epoch 10/10 | Batch  700/781 (89.6%) | Loss: 0.0004
+[02:18:13][rank0] Epoch 10/10 | Batch  720/781 (92.2%) | Loss: 0.0000
+[02:18:51][rank0] Epoch 10/10 | Batch  740/781 (94.8%) | Loss: 0.0004
+[02:19:23][rank0] Epoch 10/10 | Batch  760/781 (97.3%) | Loss: 0.0000
+[02:19:47][rank0] Epoch 10/10 | Batch  780/781 (99.9%) | Loss: 0.0000
+[02:19:47][rank0] [epoch 10] avg_loss=0.0017 | time=24.9m | best=0.0017 <- best
+[02:19:48][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_10.pth
+[02:19:49][rank0] ============================================================
+[02:19:49][rank0] Training complete.
+[02:19:49][rank0] Final model: /home/jovyan/work/EchoTrace/ensemble_model.pth
+[02:19:49][rank0] ============================================================
+rank0] Epoch 10/10 | Batch  720/781 (92.2%) | Loss: 0.0000
+[02:18:51][rank0] Epoch 10/10 | Batch  740/781 (94.8%) | Loss: 0.0004
+[02:19:23][rank0] Epoch 10/10 | Batch  760/781 (97.3%) | Loss: 0.0000
+[02:19:47][rank0] Epoch 10/10 | Batch  780/781 (99.9%) | Loss: 0.0000
+[02:19:47][rank0] [epoch 10] avg_loss=0.0017 | time=24.9m | best=0.0017 <- best
+[02:19:48][rank0] Saved -> /home/jovyan/work/EchoTrace/checkpoints/echo_epoch_10.pth
+[02:19:49][rank0] ============================================================
+[02:19:49][rank0] Training complete.
+[02:19:49][rank0] Final model: /home/jovyan/work/EchoTrace/ensemble_model.pth
+[02:19:49][rank0] ============================================================
