@@ -50,7 +50,15 @@ def generate_forensic_report(audio_path, model_path="../deepfake_detector.pth"):
     model = build_model(device)
     
     if os.path.exists(model_abs_path):
-        model.load_state_dict(torch.load(model_abs_path, map_location=device))
+        state = torch.load(model_abs_path, map_location=device)
+        # Strip DDP "module." prefix if present (for DDP-trained checkpoints)
+        state = {k.replace("module.", ""): v for k, v in state.items()}
+        # Load with strict=False to allow old single-channel heads or shape mismatches
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if missing:
+            print(f"[MODEL] Missing keys (expected): {missing[:5]}...")
+        if unexpected:
+            print(f"[MODEL] Unexpected keys: {unexpected[:5]}...")
         model.eval()
     else:
         print(f"❌ Error: Model weights not found at {model_abs_path}")

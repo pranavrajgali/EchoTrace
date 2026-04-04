@@ -30,9 +30,11 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     print(f"\nEvaluating on {dataset_name}...")
 
     with torch.no_grad():
-        for specs, labels in dataloader:
-            specs, labels = specs.to(device), labels.to(device)
-            outputs = model(specs)
+        for specs, scalars, labels in dataloader:
+            specs = specs.to(device)
+            scalars = scalars.to(device)
+            labels = labels.to(device)
+            outputs = model(specs, scalars)
 
             # Get probabilities and predictions
             probabilities = torch.sigmoid(outputs).squeeze().cpu().numpy()
@@ -64,14 +66,15 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
     pr_auc = auc(recall, precision)
 
-    # Per-class metrics
-    bonafide_correct = cm[0, 0]
-    bonafide_total = cm[0, 0] + cm[0, 1]
-    spoof_correct = cm[1, 1]
-    spoof_total = cm[1, 0] + cm[1, 1]
+    # Per-class metrics: Real (label=0) and Fake (label=1)
+    real_correct = cm[0, 0]
+    real_total = cm[0, 0] + cm[0, 1]
+    fake_correct = cm[1, 1]
+    fake_total = cm[1, 0] + cm[1, 1]
 
-    bonafide_acc = bonafide_correct / bonafide_total * 100 if bonafide_total > 0 else 0
-    spoof_acc = spoof_correct / spoof_total * 100 if spoof_total > 0 else 0
+    real_recall = real_correct / real_total * 100 if real_total > 0 else 0
+    fake_recall = fake_correct / fake_total * 100 if fake_total > 0 else 0
+    balanced_accuracy = (real_recall + fake_recall) / 2
 
     # EER (Equal Error Rate) calculation
     from scipy.optimize import brentq
@@ -89,8 +92,9 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     results = {
         'dataset': dataset_name,
         'accuracy': accuracy,
-        'bonafide_accuracy': bonafide_acc,
-        'spoof_accuracy': spoof_acc,
+        'real_recall': real_recall,
+        'fake_recall': fake_recall,
+        'balanced_accuracy': balanced_accuracy,
         'roc_auc': roc_auc,
         'pr_auc': pr_auc,
         'eer': eer,
@@ -104,14 +108,15 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     return results
 
 def print_evaluation_results(results):
-    """Print comprehensive evaluation results"""
+    """Print comprehensive evaluation results with balanced metrics"""
     print(f"\n{'='*60}")
     print(f"📊 EVALUATION RESULTS - {results['dataset'].upper()}")
     print(f"{'='*60}")
 
-    print(f"📈 Overall Accuracy: {results['accuracy']:.2f}%")
-    print(f"✅ Bonafide (Real) Accuracy: {results['bonafide_accuracy']:.2f}%")
-    print(f"❌ Spoof (Fake) Accuracy: {results['spoof_accuracy']:.2f}%")
+    print(f"✅ Real Recall (Real audio detected as real): {results['real_recall']:.2f}%")
+    print(f"❌ Fake Recall (Fake audio detected as fake): {results['fake_recall']:.2f}%")
+    print(f"⚖️  Balanced Accuracy: {results['balanced_accuracy']:.2f}%")
+    print(f"\n📈 Overall Accuracy: {results['accuracy']:.2f}%")
 
     if results['roc_auc'] is not None:
         print(f"🎯 ROC AUC Score: {results['roc_auc']:.4f}")
@@ -119,7 +124,7 @@ def print_evaluation_results(results):
     print(f"📊 Precision-Recall AUC: {results['pr_auc']:.4f}")
 
     if results['eer'] is not None:
-        print(f"⚖️  Equal Error Rate (EER): {results['eer']:.4f}")
+        print(f"🔐 Equal Error Rate (EER): {results['eer']:.4f}%")
 
     print(f"📋 Total Samples: {results['total_samples']}")
 
@@ -179,9 +184,10 @@ def create_evaluation_plots(results_list, save_dir):
             f.write(f"\n{'='*60}\n")
             f.write(f"EVALUATION RESULTS - {results['dataset'].upper()}\n")
             f.write(f"{'='*60}\n")
+            f.write(f"Real Recall (Real detected as real): {results['real_recall']:.2f}%\n")
+            f.write(f"Fake Recall (Fake detected as fake): {results['fake_recall']:.2f}%\n")
+            f.write(f"Balanced Accuracy: {results['balanced_accuracy']:.2f}%\n")
             f.write(f"Overall Accuracy: {results['accuracy']:.2f}%\n")
-            f.write(f"Bonafide Accuracy: {results['bonafide_accuracy']:.2f}%\n")
-            f.write(f"Spoof Accuracy: {results['spoof_accuracy']:.2f}%\n")
             if results['roc_auc'] is not None:
                 f.write(f"ROC AUC: {results['roc_auc']:.4f}\n")
             f.write(f"PR AUC: {results['pr_auc']:.4f}\n")

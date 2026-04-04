@@ -5,7 +5,42 @@ Freeze: layers 1-3 frozen, layer 4 + fc head trainable.
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.models as models
+
+
+class FocalLoss(nn.Module):
+    """
+    Focal Loss for imbalanced classification.
+    Down-weights easy/confident predictions, focuses on hard examples.
+    Reference: Lin et al. "Focal Loss for Dense Object Detection"
+    """
+    def __init__(self, alpha=0.25, gamma=2.0):
+        """
+        alpha : Weight for positive class (spoof/fake)
+        gamma : Focusing parameter; higher = more focus on hard examples
+        """
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, logits, targets):
+        """
+        logits : Tensor (B, 1) or (B,) — raw outputs from model
+        targets: Tensor (B, 1) or (B,) — binary labels {0, 1}
+        """
+        # Compute BCE and probability
+        bce = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        p = torch.sigmoid(logits)
+
+        # Compute pt: probability of ground truth class
+        p_t = p * targets + (1 - p) * (1 - targets)
+
+        # Apply focal modulation: down-weight easy examples
+        focal_weight = (1 - p_t) ** self.gamma
+        focal = self.alpha * focal_weight * bce
+
+        return focal.mean()
 
 
 class EchoTraceResNet(nn.Module):
@@ -73,7 +108,9 @@ def build_model(device="cpu"):
 
 
 def get_loss():
-    """Binary cross-entropy with logits. Numerically stable."""
+    """Binary cross-entropy with logits. Numerically stable.
+    Note: FocalLoss can be used instead in train_ddp.py for imbalanced data.
+    """
     return nn.BCEWithLogitsLoss()
 
 

@@ -4,6 +4,7 @@ EchoTrace DDP Training Script
 Absolute paths — data at /home/jovyan/work/data/
 """
 import os
+import glob
 import time
 import datetime
 import torch
@@ -14,25 +15,26 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
 from core.model import EchoTraceResNet, get_loss, get_optimizer
-from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, MultiDataset
+from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, MultiDataset, LibriSpeechDataset
 
 # ── Config ────────────────────────────────────────────────────
 WORLD_SIZE     = min(4, torch.cuda.device_count())
 
 # Absolute paths
-ASV_PROTOCOL   = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
-ASV_DIR        = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_train/flac"
-WAVEFAKE_DIR   = "/home/jovyan/work/data/wavefake/wavefake-test"
-ITW_DIR        = "/home/jovyan/work/data/in_the_wild/release_in_the_wild"
+ASV_PROTOCOL    = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
+ASV_DIR         = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_train/flac"
+WAVEFAKE_DIR    = "/home/jovyan/work/data/wavefake/wavefake-test"
+ITW_DIR         = "/home/jovyan/work/data/in_the_wild/release_in_the_wild"
+LIBRISPEECH_DIR = "/home/jovyan/work/data/librispeech/train-other-500"
 
 CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints"
 FINAL_PATH     = "/home/jovyan/work/EchoTrace/ensemble_model.pth"
 LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 
 BATCH_PER_GPU  = 32      # 8 × 4 GPUs = 32 effective batch size
-NUM_EPOCHS     = 10
-SUBSET_SIZE    = 50000   # None = full dataset
-AUGMENT_PROB   = 0.3
+NUM_EPOCHS     = 7       # Reduced from 10: balanced data + focal loss = faster convergence
+SUBSET_SIZE    = 60000   # LibriSpeech cap; 50000 for ASV/WaveFake/ITW
+AUGMENT_PROB   = 0.3     # Fake sampling; real uses p=0.5 in LibriSpeech
 
 
 # ── Logging ───────────────────────────────────────────────────
@@ -98,7 +100,15 @@ def get_loader(rank, world_size, logger):
         augment_prob=AUGMENT_PROB,
     )
 
-    dataset = MultiDataset(asv, wf, itw)
+    logger.info("Loading LibriSpeech dataset ...")
+    librispeech = LibriSpeechDataset(
+        data_dir=LIBRISPEECH_DIR,
+        subset_size=SUBSET_SIZE,
+        augment=True,
+        augment_prob=0.5,  # Higher augmentation for real samples (prevents "clean = real" shortcut)
+    )
+
+    dataset = MultiDataset(asv, wf, itw, librispeech)
     logger.info(f"Total training samples: {len(dataset)}")
 
     sampler = DistributedSampler(
@@ -139,7 +149,7 @@ def train(rank, world_size):
         logger.info(f"Trainable params: {trainable:,} / {total:,}")
 
     model     = DDP(model, device_ids=[rank], find_unused_parameters=False)
-    criterion = get_loss()
+    criterion = get_loss()  # BCE with balanced 1:1 real:fake data
     optimizer = get_optimizer(model.module)
     scaler    = torch.amp.GradScaler("cuda")
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
@@ -154,11 +164,39 @@ def train(rank, world_size):
         logger.info(f"  Batch/GPU      : {BATCH_PER_GPU}")
         logger.info(f"  Effective batch: {BATCH_PER_GPU * world_size}")
         logger.info(f"  Epochs         : {NUM_EPOCHS}")
+        logger.info(f"  Loss           : BCE (balanced data)")
         logger.info("=" * 60)
 
     best_loss = float("inf")
+    start_epoch = 0
 
-    for epoch in range(NUM_EPOCHS):
+    # Checkpoint resumption: load latest checkpoint if it exists
+    if rank == 0:
+        checkpoint_files = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "checkpoint_epoch_*.pth")))
+        if checkpoint_files:
+            latest_ckpt = checkpoint_files[-1]
+            try:
+                ckpt = torch.load(latest_ckpt, map_location=device)
+                model.module.load_state_dict(ckpt['model_state'])
+                optimizer.load_state_dict(ckpt['optimizer_state'])
+                scheduler.load_state_dict(ckpt['scheduler_state'])
+                start_epoch = ckpt['epoch'] + 1
+                best_loss = ckpt['best_loss']
+                logger.info(f"Resumed from checkpoint: {latest_ckpt}")
+                logger.info(f"Starting from epoch {start_epoch + 1} (best_loss={best_loss:.4f})")
+            except Exception as e:
+                logger.error(f"Failed to load checkpoint: {e}")
+    
+    # Broadcast resumption state to all ranks
+    if world_size > 1:
+        start_epoch_tensor = torch.tensor([start_epoch], device=device, dtype=torch.long)
+        best_loss_tensor = torch.tensor([best_loss], device=device, dtype=torch.float32)
+        dist.broadcast(start_epoch_tensor, src=0)
+        dist.broadcast(best_loss_tensor, src=0)
+        start_epoch = start_epoch_tensor.item()
+        best_loss = best_loss_tensor.item()
+
+    for epoch in range(start_epoch, NUM_EPOCHS):
         sampler.set_epoch(epoch)
         model.train()
         epoch_loss = 0.0
@@ -205,10 +243,21 @@ def train(rank, world_size):
                 f"time={elapsed:.1f}m | best={best_loss:.4f}{saved}"
             )
 
-            ckpt = os.path.join(CHECKPOINT_DIR, f"echo_epoch_{epoch+1:02d}.pth")
-            torch.save(model.module.state_dict(), ckpt)
+            # Save full checkpoint (model + optimizer + scheduler + epoch + best_loss)
+            checkpoint = {
+                'epoch': epoch,
+                'model_state': model.module.state_dict(),
+                'optimizer_state': optimizer.state_dict(),
+                'scheduler_state': scheduler.state_dict(),
+                'best_loss': best_loss
+            }
+            ckpt_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_epoch_{epoch+1:02d}.pth")
+            torch.save(checkpoint, ckpt_path)
+            
+            # Also save final model weights for inference
             torch.save(model.module.state_dict(), FINAL_PATH)
-            logger.info(f"Saved -> {ckpt}")
+            logger.info(f"Saved checkpoint -> {ckpt_path}")
+            logger.info(f"Saved final model -> {FINAL_PATH}")
 
     cleanup()
     if rank == 0:

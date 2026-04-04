@@ -17,11 +17,12 @@ from PIL import Image
 # ── Absolute data root ────────────────────────────────────────
 DATA_ROOT = "/home/jovyan/work/data"
 
-ASV_PROTOCOL  = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt")
-ASV_DIR       = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_train/flac")
-WAVEFAKE_DIR  = os.path.join(DATA_ROOT, "wavefake/wavefake-test")
-ITW_DIR       = os.path.join(DATA_ROOT, "in_the_wild/release_in_the_wild")
-MUSAN_DIR     = os.path.join(DATA_ROOT, "noise/musan/noise")
+ASV_PROTOCOL   = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt")
+ASV_DIR        = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_train/flac")
+WAVEFAKE_DIR   = os.path.join(DATA_ROOT, "wavefake/wavefake-test")
+ITW_DIR        = os.path.join(DATA_ROOT, "in_the_wild/release_in_the_wild")
+LIBRISPEECH_DIR = os.path.join(DATA_ROOT, "librispeech/train-other-500")
+MUSAN_DIR      = os.path.join(DATA_ROOT, "noise/musan/noise")
 
 
 # ── Audio Augmenter ───────────────────────────────────────────
@@ -126,20 +127,38 @@ def build_feature_image(audio, sr=16000):
 
 
 # ── Audio loader ──────────────────────────────────────────────
-def load_audio(file_path, target_sr=16000, duration=4.0):
-    """Load audio, force mono, fixed duration, peak-normalise."""
+def load_audio(file_path, target_sr=16000, duration=4.0, random_crop=False):
+    """Load audio, force mono, fixed duration, peak-normalise.
+    
+    Args:
+        file_path   : Path to audio file
+        target_sr   : Target sample rate (Hz)
+        duration    : Target duration (seconds)
+        random_crop : If True and audio is longer than target, randomly crop.
+                      If False, always take first 4s.
+    """
     target_len = int(target_sr * duration)
     try:
-        audio, _ = librosa.load(file_path, sr=target_sr, duration=duration, mono=True)
+        audio, _ = librosa.load(file_path, sr=target_sr, mono=True)
     except Exception as e:
         print(f"[load_audio] Failed to load {file_path}: {e}")
         return np.zeros(target_len, dtype=np.float32)
 
-    if len(audio) < target_len:
+    # Crop to target duration
+    if len(audio) > target_len:
+        if random_crop:
+            # Random crop: pick a random starting point in the valid range
+            max_start = len(audio) - target_len
+            start = random.randint(0, max_start) if max_start > 0 else 0
+            audio = audio[start : start + target_len]
+        else:
+            # Fixed crop: always take first 4s
+            audio = audio[:target_len]
+    elif len(audio) < target_len:
+        # Pad if too short
         audio = np.pad(audio, (0, target_len - len(audio)))
-    else:
-        audio = audio[:target_len]
 
+    # Peak normalization
     peak = np.max(np.abs(audio))
     if peak > 1e-7:
         audio = audio / peak
@@ -333,15 +352,21 @@ class InTheWildDataset(Dataset):
 # ── MultiDataset ──────────────────────────────────────────────
 class MultiDataset(Dataset):
     """
-    Round-robin across ASVspoof, WaveFake, InTheWild.
+    Round-robin across ASVspoof, WaveFake, InTheWild, and optionally LibriSpeech.
     Every __getitem__ returns (tensor, scalars, label).
     """
-    def __init__(self, asv, wavefake, wild):
+    def __init__(self, asv, wavefake, wild, librispeech=None):
+        datasets = [asv, wavefake, wild]
+        if librispeech is not None:
+            datasets.append(librispeech)
+        
         if any(d is None for d in [asv, wavefake, wild]):
-            raise ValueError("All three datasets are mandatory.")
-        self.datasets  = [asv, wavefake, wild]
+            raise ValueError("ASV, WaveFake, and InTheWild datasets are mandatory.")
+        
+        self.datasets  = datasets
         self.total_len = sum(len(d) for d in self.datasets)
-        print(f"[MultiDataset] Total samples: {self.total_len}")
+        num_sources = len(self.datasets)
+        print(f"[MultiDataset] Total samples: {self.total_len} | Sources: {num_sources}")
 
     def __len__(self):
         return self.total_len
@@ -350,3 +375,45 @@ class MultiDataset(Dataset):
         ds_idx      = idx % len(self.datasets)
         local_idx   = np.random.randint(0, len(self.datasets[ds_idx]))
         return self.datasets[ds_idx][local_idx]
+
+
+# ── LibriSpeech ───────────────────────────────────────────────
+class LibriSpeechDataset(Dataset):
+    """
+    LibriSpeech train-other-500 dataset.
+    All audio is real (bonafide).
+    Label: 0 (real)
+    
+    Features:
+    - 500+ speakers (high speaker diversity)
+    - Varied acoustic conditions (noisy/reverberant)
+    - Prevents model learning "clean = real" shortcut
+    """
+    def __init__(self, data_dir=LIBRISPEECH_DIR, subset_size=None, augment=False, augment_prob=0.5):
+        self.augment   = augment
+        self.augmenter = AudioAugmenter(p=augment_prob) if augment else None
+        
+        # Find all .flac files in train-other-500
+        self.files = glob.glob(f"{data_dir}/**/*.flac", recursive=True)
+        
+        if not self.files:
+            raise FileNotFoundError(f"No FLAC files found at {data_dir}. Expected format: {data_dir}/**/*.flac")
+        
+        # Optional: subsample for faster training
+        if subset_size:
+            random.shuffle(self.files)
+            self.files = self.files[:subset_size]
+        
+        # All LibriSpeech samples are real (bonafide)
+        self.labels = [0] * len(self.files)
+        print(f"[LibriSpeechDataset] Loaded {len(self.files)} real files")
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        audio = load_audio(self.files[idx], random_crop=True)  # Random crop prevents memorization
+        if self.augment:
+            audio = self.augmenter.apply_augmentations(audio)
+        tensor, scalars = _to_tensor(audio)
+        return tensor, scalars, self.labels[idx]
