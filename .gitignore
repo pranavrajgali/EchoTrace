@@ -12,4 +12,9 @@ venv/
 .DS_Store
 data/
 deepfake/
-reports/
+reports/checkpoints/
+*.log
+*.ipynb
+.ipynb_checkpoints/
+training.log
+ddp_*.log

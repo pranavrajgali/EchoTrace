@@ -106,8 +106,11 @@ def build_feature_image(audio, sr=16000):
                       librosa.feature.delta(mfcc, order=2)])
 
     # Ch3: Spectral contrast (7 rows) + Chroma (12 rows) → 19 rows
-    ch3  = np.vstack([librosa.feature.spectral_contrast(y=audio, sr=sr),
-                      librosa.feature.chroma_stft(y=audio, sr=sr)])
+    # Chroma via filterbank (no STFT/CQT — avoids numba segfault)
+    D    = np.abs(librosa.stft(audio, n_fft=2048, hop_length=256))
+    sc   = librosa.feature.spectral_contrast(S=D, sr=sr)
+    chroma = librosa.feature.chroma_cqt(y=audio, sr=sr, hop_length=256)
+    ch3  = np.vstack([sc, chroma])
 
     def _norm_resize(data):
         data = data.astype(np.float32)

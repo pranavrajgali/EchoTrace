@@ -29,9 +29,9 @@ CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints"
 FINAL_PATH     = "/home/jovyan/work/EchoTrace/ensemble_model.pth"
 LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 
-BATCH_PER_GPU  = 8      # 8 × 4 GPUs = 32 effective batch size
+BATCH_PER_GPU  = 32      # 8 × 4 GPUs = 32 effective batch size
 NUM_EPOCHS     = 10
-SUBSET_SIZE    = None   # None = full dataset
+SUBSET_SIZE    = 50000   # None = full dataset
 AUGMENT_PROB   = 0.3
 
 
@@ -57,7 +57,7 @@ def get_logger(rank):
 # ── DDP setup / teardown ──────────────────────────────────────
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"]      = "localhost"
-    os.environ["MASTER_PORT"]      = "12359"
+    os.environ["MASTER_PORT"]      = "12365"
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"]  = "1"
     dist.init_process_group(
@@ -108,10 +108,10 @@ def get_loader(rank, world_size, logger):
         dataset,
         batch_size=BATCH_PER_GPU,
         sampler=sampler,
-        num_workers=4,
+        num_workers=0,
         pin_memory=True,
         drop_last=True,
-        persistent_workers=True,
+        persistent_workers=False,
     )
     return loader, sampler
 
