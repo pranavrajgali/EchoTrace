@@ -17,12 +17,12 @@ from PIL import Image
 # ── Absolute data root ────────────────────────────────────────
 DATA_ROOT = "/home/jovyan/work/data"
 
-ASV_PROTOCOL   = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt")
-ASV_DIR        = os.path.join(DATA_ROOT, "asvspoof2019/LA/ASVspoof2019_LA_train/flac")
-WAVEFAKE_DIR   = os.path.join(DATA_ROOT, "wavefake/wavefake-test")
-ITW_DIR        = os.path.join(DATA_ROOT, "in_the_wild/release_in_the_wild")
-LIBRISPEECH_DIR = os.path.join(DATA_ROOT, "librispeech/train-other-500")
-MUSAN_DIR      = os.path.join(DATA_ROOT, "noise/musan/noise")
+ASV_PROTOCOL    = os.path.join(DATA_ROOT, "LA/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt")
+ASV_DIR         = os.path.join(DATA_ROOT, "LA/LA/ASVspoof2019_LA_train/flac")
+WAVEFAKE_DIR    = os.path.join(DATA_ROOT, "wavefake-test/wavefake-test")
+ITW_DIR         = os.path.join(DATA_ROOT, "release_in_the_wild/release_in_the_wild")
+LIBRISPEECH_DIR = os.path.join(DATA_ROOT, "LibriSpeech")
+MUSAN_DIR       = os.path.join(DATA_ROOT, "noise/musan")
 
 
 # ── Audio Augmenter ───────────────────────────────────────────

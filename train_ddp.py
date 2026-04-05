@@ -21,11 +21,11 @@ from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, Multi
 WORLD_SIZE     = min(4, torch.cuda.device_count())
 
 # Absolute paths
-ASV_PROTOCOL    = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
-ASV_DIR         = "/home/jovyan/work/data/asvspoof2019/LA/ASVspoof2019_LA_train/flac"
-WAVEFAKE_DIR    = "/home/jovyan/work/data/wavefake/wavefake-test"
-ITW_DIR         = "/home/jovyan/work/data/in_the_wild/release_in_the_wild"
-LIBRISPEECH_DIR = "/home/jovyan/work/data/librispeech/train-other-500"
+ASV_PROTOCOL    = "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
+ASV_DIR         = "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_train/flac"
+WAVEFAKE_DIR    = "/home/jovyan/work/data/wavefake-test/wavefake-test"
+ITW_DIR         = "/home/jovyan/work/data/release_in_the_wild/release_in_the_wild"
+LIBRISPEECH_DIR = "/home/jovyan/work/data/LibriSpeech"
 
 CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints"
 FINAL_PATH     = "/home/jovyan/work/EchoTrace/ensemble_model.pth"

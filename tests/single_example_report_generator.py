@@ -30,39 +30,17 @@ from core.inference import run_inference
 
 ALLOWED_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg'}
 
-def generate_forensic_report(audio_path, model_path="../deepfake_detector.pth"):
-    # Resolve the model path — use as-is if absolute, else relative to this script
-    if os.path.isabs(model_path):
-        model_abs_path = model_path
-    else:
-        model_abs_path = os.path.abspath(os.path.join(os.path.dirname(__file__), model_path))
-    
+def generate_forensic_report(audio_path):
+    """
+    Analyzes a single audio file and generates a visual forensic report saved as a PNG.
+    Uses the production core.inference pipeline (which handles weights & device automatically).
+    """
     file_ext = os.path.splitext(audio_path)[1].lower()
     
     if file_ext not in ALLOWED_EXTENSIONS:
         error_msg = f"Unsupported File Format ({file_ext}). Please use: {', '.join(ALLOWED_EXTENSIONS).upper()}"
         print(f"\n🛑 ERROR: {error_msg}")
-        # Returning None, None ensures the Streamlit app knows the process failed
         return {"result": "ERROR", "confidence": "0%", "error": error_msg}, None
-
-    # Setup Device
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    model = build_model(device)
-    
-    if os.path.exists(model_abs_path):
-        state = torch.load(model_abs_path, map_location=device)
-        # Strip DDP "module." prefix if present (for DDP-trained checkpoints)
-        state = {k.replace("module.", ""): v for k, v in state.items()}
-        # Load with strict=False to allow old single-channel heads or shape mismatches
-        missing, unexpected = model.load_state_dict(state, strict=False)
-        if missing:
-            print(f"[MODEL] Missing keys (expected): {missing[:5]}...")
-        if unexpected:
-            print(f"[MODEL] Unexpected keys: {unexpected[:5]}...")
-        model.eval()
-    else:
-        print(f"❌ Error: Model weights not found at {model_abs_path}")
-        return {"result": "MODEL_ERROR", "confidence": "0%"}, None
 
     # Run Analysis
     if not os.path.exists(audio_path):

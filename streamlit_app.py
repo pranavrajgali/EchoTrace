@@ -26,6 +26,13 @@ except ImportError as e:
     st.error(f"Failed to import forensic report generator: {e}")
     st.stop()
 
+# ── Import EchoTrace Core ──
+from core.model import build_model
+from core.preprocess import build_feature_image, extract_scalar_features
+from core.inference import device, _transform
+from utils.audio import validate_and_load, AudioValidationError
+from utils.llm_report import generate_llm_report
+
 try:
     from streamlit_mic_recorder import mic_recorder
     MIC_AVAILABLE = True
@@ -434,62 +441,44 @@ st.markdown("""
 
 
 # ─── Confidence Timeline ─────────────────────────────────────
-def compute_confidence_timeline(audio_bytes: bytes, model_path: str, window_sec=2.0, hop_sec=0.5):
+def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.5):
     """
     Slice audio into overlapping windows, run inference on each,
     return list of (timestamp, confidence, verdict) tuples.
     """
-    import librosa, cv2, torch, numpy as np
-    import torchvision.transforms as transforms
-    import torch.nn as nn
-    from torchvision import models as tv_models
-
     SR = 16000
     WINDOW = int(window_sec * SR)
     HOP    = int(hop_sec * SR)
 
-    # Load full audio
-    audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=SR, res_type='soxr_hq')
-    peak = np.max(np.abs(audio))
-    if peak > 1e-7:
-        audio = audio / peak
-
-    # Build model
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    cam_model = tv_models.resnet50(weights=None)
-    cam_model.fc = nn.Sequential(
-        nn.Linear(cam_model.fc.in_features, 512),
-        nn.ReLU(),
-        nn.Dropout(0.4),
-        nn.Linear(512, 1)
-    )
-    abs_path = model_path if os.path.isabs(model_path) else os.path.abspath(os.path.join(os.path.dirname(__file__), model_path))
-    cam_model.load_state_dict(torch.load(abs_path, map_location=device))
-    cam_model.to(device).eval()
-
-    tfm = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    global model
+    try:
+        model.eval()
+    except NameError:
+        # If model isn't globally loaded, initialize it via core.inference logic
+        from core.inference import model as inference_model
+        model = inference_model
 
     results = []
-    total_samples = len(audio)
+    total_samples = len(audio_np)
     starts = list(range(0, max(1, total_samples - WINDOW + 1), HOP))
 
     for start in starts:
-        chunk = audio[start:start + WINDOW]
+        chunk = audio_np[start:start + WINDOW]
         if len(chunk) < WINDOW:
             chunk = np.pad(chunk, (0, WINDOW - len(chunk)))
 
-        mel = librosa.feature.melspectrogram(y=chunk, sr=SR, n_mels=224, n_fft=1024)
-        log_mel = librosa.power_to_db(mel, ref=np.max)
-        img_np = ((log_mel - log_mel.min()) / (log_mel.max() - log_mel.min() + 1e-6) * 255).astype(np.uint8)
-        img_rgb = cv2.cvtColor(img_np, cv2.COLOR_GRAY2RGB)
-        img_rgb = cv2.resize(img_rgb, (224, 224))
+        # 3-channel feature image
+        feature_img = build_feature_image(chunk, sr=SR)
+        pil_img = Image.fromarray(feature_img)
+        input_tensor = _transform(pil_img).unsqueeze(0).to(device)
 
-        tensor = tfm(img_rgb).unsqueeze(0).to(device)
+        # Scalar features
+        scalars_np = extract_scalar_features(chunk, sr=SR)
+        scalars_tensor = torch.tensor(scalars_np, dtype=torch.float32).unsqueeze(0).to(device)
+
         with torch.no_grad():
-            prob = torch.sigmoid(cam_model(tensor)).item()
+            output = model(input_tensor, scalars_tensor)
+            prob = torch.sigmoid(output).item()
 
         timestamp = start / SR
         results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.5 else "BONAFIDE"))
@@ -513,7 +502,7 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
         color:#5A5A5E;letter-spacing:0.1em;text-align:center;">
         Running sliding-window inference…</p>''', unsafe_allow_html=True)
     try:
-        points = compute_confidence_timeline(audio_bytes, model_path)
+        points = compute_confidence_timeline(audio_bytes)
     except Exception as e:
         ctx.error(f"Timeline error: {e}")
         _spin.empty()
@@ -647,6 +636,19 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
 # ─── Shared analysis function ────────────────────────────────
 def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=None):
     ctx = container if container is not None else st
+    
+    # ── VAD and Audio Validation ──
+    try:
+        audio_np, voiced_ratio = validate_and_load(audio_bytes)
+    except AudioValidationError as e:
+        ctx.markdown(f"""
+            <div style="background: rgba(232, 68, 58, 0.1); border-left: 3px solid #E8443A; padding: 1rem; border-radius: 4px; margin-top: 1rem;">
+                <div style="color: #E8443A; font-family: 'Space Mono', monospace; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;">Validation Error</div>
+                <div style="color: #F0EDE8; font-family: 'DM Sans', sans-serif; font-size: 0.88rem; margin-top: 4px;">{str(e)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        return
+
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     try:
         os.write(fd, audio_bytes)
@@ -657,23 +659,16 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
         status.markdown(
             "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
             "color:#5A5A5E;letter-spacing:0.12em;text-align:center;margin-top:0.75rem;'>"
-            "Initializing signal analysis…</p>",
+            "Deep learning core online. Identifying synthetic artifacts…</p>",
             unsafe_allow_html=True,
         )
 
         for i in range(100):
-            time.sleep(0.01)
+            time.sleep(0.005)
             progress_bar.progress(i + 1)
 
-        status.markdown(
-            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#5A5A5E;letter-spacing:0.12em;text-align:center;margin-top:0.75rem;'>"
-            "Extracting features &amp; running inference…</p>",
-            unsafe_allow_html=True,
-        )
-
-        model_weight_path = str(project_root / "deepfake_detector.pth")
-        analysis_result, report_path = generate_forensic_report(tmp_path, model_path=model_weight_path)
+        # Main Inference
+        analysis_result, report_path = generate_forensic_report(tmp_path)
 
         status.empty()
         progress_bar.empty()
@@ -681,40 +676,66 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
         if report_path and os.path.exists(report_path):
             verdict = analysis_result.get("result", "UNKNOWN")
             is_fake = verdict != "BONAFIDE"
-            verdict_label = "FAKE / MANIPULATED" if is_fake else "AUTHENTIC / BONAFIDE"
+            verdict_label = "AI-GENERATED (SPOOF)" if is_fake else "AUTHENTIC (BONAFIDE)"
             verdict_cls = "verdict-result-fake" if is_fake else "verdict-result-real"
-            confidence = analysis_result.get("confidence", "N/A")
+            confidence_str = analysis_result.get("confidence", "N/A")
+            raw_prob = analysis_result.get("raw_prob", 0.5)
 
             ctx.divider()
 
+            # Result Dashboard
             ctx.markdown(f"""
                 <div class="verdict-wrap">
-                    <div class="verdict-eyebrow">Analysis Result</div>
-                    <div class="verdict-source-tag">Source · {source_label}</div>
+                    <div class="verdict-eyebrow">EchoTrace Verdict</div>
+                    <div class="verdict-source-tag">Processing: ResNet-50 v4 · DDP-Ensemble</div>
                     <div class="{verdict_cls}">{verdict_label}</div>
                     <div class="verdict-confidence">
-                        Confidence Score &nbsp;·&nbsp; <span>{confidence}</span>
+                        Confidence Score &nbsp;·&nbsp; <span>{confidence_str}</span>
+                        <div style="font-size: 0.65rem; color: #3A3A3E; margin-top: 2px;">(Probability: {raw_prob:.4f})</div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Confidence Timeline — wrap in ctx to guarantee column scope
-            with ctx:
-                render_confidence_timeline(audio_bytes, model_weight_path, ctx)
+            # LLM Forensic Report integration
+            ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis Report (AI-Generated)</div>', unsafe_allow_html=True)
+            
+            # Extract scalars for the LLM from the actual audio logic
+            # (In a real app we'd pass these from analysis_result, but we can compute them here too)
+            sc = extract_scalar_features(audio_np[:64000], sr=16000)
+            
+            llm_text = generate_llm_report(
+                verdict=verdict,
+                confidence=float(confidence_str.strip('%'))/100,
+                f0_jitter=sc[6],
+                spectral_contrast=sc[2], # using centroid as proxy or sc[2]
+                voiced_ratio=voiced_ratio
+            )
+            
+            ctx.markdown(f"""
+                <div style="background: #111113; border: 1px solid #1E1E20; padding: 1.5rem; border-radius: 4px; border-left: 2px solid #5A5A5E;">
+                    <p style="color: #C8C5BF; font-family: 'DM Sans', sans-serif; font-size: 0.95rem; line-height: 1.6; margin: 0;">
+                        {llm_text}
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
 
-            ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Report</div>', unsafe_allow_html=True)
+            # Confidence Timeline
+            with ctx:
+                render_confidence_timeline(audio_np, ctx)
+
+            ctx.markdown('<div class="section-label" style="margin-top:2rem">Grad-CAM Spatial Pulse</div>', unsafe_allow_html=True)
             ctx.image(str(report_path), use_container_width=True)
 
             with open(report_path, "rb") as f:
                 ctx.download_button(
-                    label="↓  Download Forensic Report",
+                    label="↓ Download Forensic Image",
                     data=f,
                     file_name=os.path.basename(report_path),
                     mime="image/png",
                     use_container_width=True,
                 )
         else:
-            ctx.error("Report generation failed — check that model weights exist at the specified path.")
+            ctx.error("Analysis engine failed — please check system logs.")
 
     except Exception as e:
         ctx.error(f"Analysis error: {str(e)}")
@@ -746,16 +767,16 @@ with col:
     st.markdown("""
         <div class="stat-row">
             <div class="stat-pill">
-                <div class="stat-val">24+</div>
-                <div class="stat-key">Feature Vectors</div>
+                <div class="stat-val">3-Channel</div>
+                <div class="stat-key">Spectral Input</div>
             </div>
             <div class="stat-pill">
-                <div class="stat-val">WAV</div>
-                <div class="stat-key">+ MP3 Support</div>
+                <div class="stat-val">8</div>
+                <div class="stat-key">Physics Scalars</div>
             </div>
             <div class="stat-pill">
-                <div class="stat-val">MIC</div>
-                <div class="stat-key">Live Recording</div>
+                <div class="stat-val">300k+</div>
+                <div class="stat-key">Training Clips</div>
             </div>
         </div>
     """, unsafe_allow_html=True)

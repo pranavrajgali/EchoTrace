@@ -10,13 +10,15 @@ from .preprocess import ASVDataset, InTheWildDataset
 
 def setup_device():
     """Setup the best available device with optimizations"""
-    # Check for MPS (Metal Performance Shaders) - Mac M1/M2
-    if torch.backends.mps.is_available():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         device = torch.device("mps")
         print("Using MPS device (Apple Silicon)")
     else:
         device = torch.device("cpu")
-        print("MPS not available, using CPU")
+        print("Using CPU")
 
     return device
 
@@ -209,15 +211,24 @@ def run_comprehensive_evaluation():
 
     # Setup paths
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(BASE_DIR, "deepfake_detector.pth")
+    model_path = os.path.join(BASE_DIR, "ensemble_model.pth")
 
     # Load model
     model = build_model(device)
-    try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
+    if os.path.exists(model_path):
+        state = torch.load(model_path, map_location=device)
+        # Handle state dict if it's a checkpoint dict
+        if isinstance(state, dict) and "model_state" in state:
+            state = state["model_state"]
+        
+        # Strip DDP prefix
+        state = {k.replace("module.", ""): v for k, v in state.items()}
+        
+        model.load_state_dict(state, strict=False)
+        model.eval()
         print(f"✅ Successfully loaded trained weights from {model_path}")
-    except FileNotFoundError:
-        print(f"❌ Error: {model_path} not found. Run train.py first!")
+    else:
+        print(f"❌ Error: {model_path} not found. Ensure training is complete!")
         return
 
     # Setup evaluation datasets
