@@ -1,0 +1,36 @@
+
+============================================================
+EVALUATION RESULTS - ASVSPOOF DEV
+============================================================
+Real Recall (Real detected as real): 89.87%
+Fake Recall (Fake detected as fake): 99.55%
+Balanced Accuracy: 94.71%
+Overall Accuracy: 98.45%
+ROC AUC: 0.9973
+PR AUC: 0.9996
+EER: 1.0000
+Total Samples: 2000
+
+Confusion Matrix:
+           Predicted
+           Real    Fake
+Actual Real  204     23
+      Fake    8   1765
+
+============================================================
+EVALUATION RESULTS - INTHEWILD VAL
+============================================================
+Real Recall (Real detected as real): 99.60%
+Fake Recall (Fake detected as fake): 98.00%
+Balanced Accuracy: 98.80%
+Overall Accuracy: 98.80%
+ROC AUC: 0.9989
+PR AUC: 0.9990
+EER: 1.0000
+Total Samples: 1000
+
+Confusion Matrix:
+           Predicted
+           Real    Fake
+Actual Real  498      2
+      Fake   10    490
