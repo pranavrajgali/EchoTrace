@@ -273,6 +273,14 @@ def run_comprehensive_evaluation():
         model.load_state_dict(state, strict=False)
         model.eval()
         print(f"✅ Successfully loaded trained weights from {model_path}")
+        
+        # 4-GPU Maximization: Use DataParallel if multiple GPUs found
+        num_gpus = torch.cuda.device_count()
+        if num_gpus > 1:
+            print(f"🚀 Using 4-GPU Max Mode: Distributing evaluation across {num_gpus} GPUs!")
+            model = torch.nn.DataParallel(model)
+        else:
+            print(f"💡 One GPU detected: Using single-GPU inference.")
     else:
         print(f"❌ Error: {model_path} not found. Ensure training is complete!")
         return
@@ -324,10 +332,14 @@ def run_comprehensive_evaluation():
                 augment=False
             )
 
-        # Create dataloader with device-optimized settings
-        batch_size = 64 if torch.cuda.is_available() else 32  # Larger batch for CUDA, standard for MPS/CPU
-        num_workers = 0  # Disable multiprocessing on macOS to avoid issues
-        pin_memory = torch.cuda.is_available()  # Pin memory only works with CUDA, not MPS
+        # Create dataloader with 4-GPU optimized settings
+        num_gpus = torch.cuda.device_count()
+        base_batch_size = 64
+        batch_size = base_batch_size * num_gpus if torch.cuda.is_available() else 32
+        
+        # Scale workers by GPU count (4 per GPU for max saturation)
+        num_workers = 4 * num_gpus if torch.cuda.is_available() else 0
+        pin_memory = torch.cuda.is_available()  # Pin memory only works with CUDA
 
         dataloader = DataLoader(
             dataset,
@@ -335,7 +347,7 @@ def run_comprehensive_evaluation():
             shuffle=False,
             num_workers=num_workers,
             pin_memory=pin_memory,
-            prefetch_factor=None if num_workers == 0 else 2
+            prefetch_factor=2 if num_workers > 0 else None
         )
 
         # Evaluate
