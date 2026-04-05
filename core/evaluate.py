@@ -2,11 +2,14 @@ import torch
 import os
 import numpy as np
 from torch.utils.data import DataLoader
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, precision_recall_curve, auc
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, precision_recall_curve, auc, roc_curve
 import matplotlib.pyplot as plt
 import seaborn as sns
 from .model import build_model
 from .preprocess import ASVDataset, InTheWildDataset
+from tqdm import tqdm
+import datetime
+import pandas as pd
 
 def setup_device():
     """Setup the best available device with optimizations"""
@@ -30,9 +33,12 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     all_probabilities = []
 
     print(f"\nEvaluating on {dataset_name}...")
+    
+    # Progress bar
+    pbar = tqdm(dataloader, desc=f"Eval {dataset_name}", leave=False)
 
     with torch.no_grad():
-        for specs, scalars, labels in dataloader:
+        for specs, scalars, labels in pbar:
             specs = specs.to(device)
             scalars = scalars.to(device)
             labels = labels.to(device)
@@ -43,9 +49,17 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
             predictions = (probabilities > 0.5).astype(int)
             labels = labels.cpu().numpy()
 
+            # Handle single sample batches (squeeze makes it 0-dim)
+            if probabilities.ndim == 0:
+                probabilities = np.array([probabilities])
+                predictions = np.array([predictions])
+
             all_predictions.extend(predictions)
             all_labels.extend(labels)
             all_probabilities.extend(probabilities)
+            
+            # Update description with current accuracy (optional, adds overhead)
+            # pbar.set_postfix({'acc': f"{np.mean(np.array(all_predictions) == np.array(all_labels))*100:.1f}%"})
 
     # Convert to numpy arrays
     all_predictions = np.array(all_predictions)
@@ -62,13 +76,15 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_predictions)
 
-    # ROC AUC
+    # ROC AUC & Curves
     try:
-        roc_auc = roc_auc_score(all_labels, all_probabilities)
+        fpr, tpr, thresholds = roc_curve(all_labels, all_probabilities)
+        roc_auc = auc(fpr, tpr)
     except:
+        fpr, tpr = None, None
         roc_auc = None
 
-    # Precision-Recall AUC
+    # Precision-Recall AUC & Curves
     precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
     pr_auc = auc(recall, precision)
 
@@ -82,18 +98,16 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     fake_recall = fake_correct / fake_total * 100 if fake_total > 0 else 0
     balanced_accuracy = (real_recall + fake_recall) / 2
 
-    # EER (Equal Error Rate) calculation
+    # EER (Equal Error Rate) calculation using ROC curve
     from scipy.optimize import brentq
     from scipy.interpolate import interp1d
-
-    fpr = 1 - recall  # False Positive Rate = 1 - Specificity
-    fnr = 1 - precision  # False Negative Rate = 1 - Sensitivity
-
-    # Find EER
-    try:
-        eer = brentq(lambda x: 1. - x - interp1d(fpr, fnr)(x), 0., 1.)
-    except:
-        eer = None
+    
+    eer = None
+    if fpr is not None and tpr is not None:
+        try:
+            eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
+        except:
+            eer = None
 
     results = {
         'dataset': dataset_name,
@@ -105,6 +119,10 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
         'roc_auc': roc_auc,
         'pr_auc': pr_auc,
         'eer': eer,
+        'fpr': fpr,
+        'tpr': tpr,
+        'precision_curve': precision,
+        'recall_curve': recall,
         'confusion_matrix': cm,
         'total_samples': len(all_labels),
         'predictions': all_predictions,
@@ -151,43 +169,60 @@ def print_evaluation_results(results):
     print(report)
 
 def create_evaluation_plots(results_list, save_dir):
-    """Create and save evaluation plots"""
+    """Create and save comprehensive evaluation plots (CM, ROC, PR)"""
     os.makedirs(save_dir, exist_ok=True)
+    plt.style.use('seaborn-v0_8-darkgrid')
 
-    # Set style
-    plt.style.use('default')
-    sns.set_palette("husl")
-
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Deepfake Audio Detection - Evaluation Results', fontsize=16, fontweight='bold')
-
-    for i, results in enumerate(results_list):
+    for results in results_list:
         dataset_name = results['dataset']
+        fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+        fig.suptitle(f'Forensic Analysis: {dataset_name}', fontsize=18, fontweight='bold', y=1.05)
 
-        # Confusion Matrix Heatmap
+        # 1. Confusion Matrix
         cm = results['confusion_matrix']
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                    xticklabels=['Real', 'Fake'],
                    yticklabels=['Real', 'Fake'],
-                   ax=axes[i, 0])
-        axes[i, 0].set_title(f'{dataset_name} - Confusion Matrix')
-        axes[i, 0].set_ylabel('Actual')
-        axes[i, 0].set_xlabel('Predicted')
+                   ax=axes[0], cbar=False)
+        axes[0].set_title('Confusion Matrix', fontsize=14)
+        axes[0].set_ylabel('Actual Label')
+        axes[0].set_xlabel('Predicted Label')
 
-        # ROC Curve placeholder (would need FPR/TPR data)
-        axes[i, 1].text(0.5, 0.5, f'{dataset_name}\nROC AUC: {results["roc_auc"]:.4f}',
-                       ha='center', va='center', fontsize=12,
-                       bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue"))
-        axes[i, 1].set_title(f'{dataset_name} - ROC AUC')
-        axes[i, 1].set_xlim(0, 1)
-        axes[i, 1].set_ylim(0, 1)
+        # 2. ROC Curve + EER
+        if results['fpr'] is not None and results['tpr'] is not None:
+            axes[1].plot(results['fpr'], results['tpr'], color='darkorange', lw=2, 
+                         label=f'ROC (AUC = {results["roc_auc"]:.4f})')
+            axes[1].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+            
+            # Plot EER point
+            if results['eer'] is not None:
+                eer_val = results['eer'] / 100.0 if results['eer'] > 1.0 else results['eer']
+                axes[1].plot(eer_val, 1-eer_val, 'ro', label=f'EER = {results["eer"]:.2f}%')
+                
+            axes[1].set_xlim([0.0, 1.0])
+            axes[1].set_ylim([0.0, 1.05])
+            axes[1].set_xlabel('False Positive Rate')
+            axes[1].set_ylabel('True Positive Rate')
+            axes[1].set_title('Receiver Operating Characteristic (ROC)', fontsize=14)
+            axes[1].legend(loc="lower right")
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'evaluation_results.png'), dpi=300, bbox_inches='tight')
-    plt.close()
+        # 3. Precision-Recall Curve
+        axes[2].plot(results['recall_curve'], results['precision_curve'], color='green', lw=2,
+                     label=f'PR Curve (AUC = {results["pr_auc"]:.4f})')
+        axes[2].set_xlabel('Recall')
+        axes[2].set_ylabel('Precision')
+        axes[2].set_ylim([0.0, 1.05])
+        axes[2].set_xlim([0.0, 1.0])
+        axes[2].set_title('Precision-Recall Curve', fontsize=14)
+        axes[2].legend(loc="lower left")
+
+        plt.tight_layout()
+        filename = f"visual_report_{dataset_name.replace(' ', '_').lower()}.png"
+        plt.savefig(os.path.join(save_dir, filename), dpi=300, bbox_inches='tight')
+        plt.close()
 
     # Save detailed metrics to text file
-    with open(os.path.join(save_dir, 'evaluation_metrics.txt'), 'w') as f:
+    with open(os.path.join(save_dir, 'evaluation_summary.txt'), 'w') as f:
         for results in results_list:
             f.write(f"\n{'='*60}\n")
             f.write(f"EVALUATION RESULTS - {results['dataset'].upper()}\n")
@@ -195,6 +230,7 @@ def create_evaluation_plots(results_list, save_dir):
             f.write(f"Real Recall (Real detected as real): {results['real_recall']:.2f}%\n")
             f.write(f"Fake Recall (Fake detected as fake): {results['fake_recall']:.2f}%\n")
             f.write(f"Balanced Accuracy: {results['balanced_accuracy']:.2f}%\n")
+            f.write(f"F1 Score: {results['f1_score']:.4f}\n")
             f.write(f"Overall Accuracy: {results['accuracy']:.2f}%\n")
             if results['roc_auc'] is not None:
                 f.write(f"ROC AUC: {results['roc_auc']:.4f}\n")
@@ -210,6 +246,10 @@ def create_evaluation_plots(results_list, save_dir):
             f.write(f"           Real    Fake\n")
             f.write(f"Actual Real {cm[0,0]:4d}   {cm[0,1]:4d}\n")
             f.write(f"      Fake {cm[1,0]:4d}   {cm[1,1]:4d}\n")
+            
+            # Save raw confusion matrix as CSV for each dataset
+            cm_df = pd.DataFrame(cm, index=['Actual_Real', 'Actual_Fake'], columns=['Pred_Real', 'Pred_Fake'])
+            cm_df.to_csv(os.path.join(save_dir, f"cm_{results['dataset'].replace(' ', '_').lower()}.csv"))
 
 def run_comprehensive_evaluation():
     """Run comprehensive evaluation on both datasets"""
@@ -303,10 +343,11 @@ def run_comprehensive_evaluation():
         results_list.append(results)
         print_evaluation_results(results)
 
-    # Create plots and save results
-    plots_dir = os.path.join(BASE_DIR, "evaluation_results")
-    create_evaluation_plots(results_list, plots_dir)
-    print(f"\n📊 Detailed results and plots saved to: {plots_dir}")
+    # Create plots and save results in a timestamped logs folder
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    logs_dir = os.path.join(BASE_DIR, "evaluation_logs", f"eval_{timestamp}")
+    create_evaluation_plots(results_list, logs_dir)
+    print(f"\n📊 Detailed results, confusion matrices, and plots saved to: {logs_dir}")
 
     # Summary
     print(f"\n{'='*60}")
