@@ -55,6 +55,10 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     # Calculate metrics
     accuracy = np.mean(all_predictions == all_labels) * 100
 
+    # Calculate F1 Score
+    from sklearn.metrics import f1_score
+    f1 = f1_score(all_labels, all_predictions, average='binary')
+
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_predictions)
 
@@ -94,6 +98,7 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     results = {
         'dataset': dataset_name,
         'accuracy': accuracy,
+        'f1_score': f1,
         'real_recall': real_recall,
         'fake_recall': fake_recall,
         'balanced_accuracy': balanced_accuracy,
@@ -118,12 +123,13 @@ def print_evaluation_results(results):
     print(f"✅ Real Recall (Real audio detected as real): {results['real_recall']:.2f}%")
     print(f"❌ Fake Recall (Fake audio detected as fake): {results['fake_recall']:.2f}%")
     print(f"⚖️  Balanced Accuracy: {results['balanced_accuracy']:.2f}%")
-    print(f"\n📈 Overall Accuracy: {results['accuracy']:.2f}%")
+    print(f"🎯 F1 Score: {results['f1_score']:.4f}")
+    print(f"📈 Overall Accuracy: {results['accuracy']:.2f}%")
 
     if results['roc_auc'] is not None:
-        print(f"🎯 ROC AUC Score: {results['roc_auc']:.4f}")
+        print(f"📊 ROC AUC Score: {results['roc_auc']:.4f}")
 
-    print(f"📊 Precision-Recall AUC: {results['pr_auc']:.4f}")
+    print(f"📊 Precision-Recall AUC (PR AUC): {results['pr_auc']:.4f}")
 
     if results['eer'] is not None:
         print(f"🔐 Equal Error Rate (EER): {results['eer']:.4f}%")
@@ -232,20 +238,28 @@ def run_comprehensive_evaluation():
         return
 
     # Setup evaluation datasets
+    # Using FULL datasets (subset_size=None) for maximum precision
     datasets_config = [
         {
             'name': 'ASVspoof Dev',
             'protocol': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt",
             'data_dir': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_dev/flac",
             'dataset_class': ASVDataset,
-            'subset_size': 2000
+            'subset_size': None
         },
         {
-            'name': 'InTheWild Val',
+            'name': 'ASVspoof Eval (Test)',
+            'protocol': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
+            'data_dir': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_eval/flac",
+            'dataset_class': ASVDataset,
+            'subset_size': None
+        },
+        {
+            'name': 'InTheWild Test',
             'data_dir': "/home/jovyan/work/data/release_in_the_wild/release_in_the_wild",
             'dataset_class': InTheWildDataset,
-            'subset': 'val',
-            'subset_size': 1000
+            'subset': 'test',
+            'subset_size': None
         }
     ]
 
