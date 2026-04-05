@@ -334,7 +334,7 @@ def run_comprehensive_evaluation():
 
         # Create dataloader with 4-GPU optimized settings
         num_gpus = torch.cuda.device_count()
-        base_batch_size = 64
+        base_batch_size = 32  # Reduced from 64 to avoid OOM on 11GB GPUs
         batch_size = base_batch_size * num_gpus if torch.cuda.is_available() else 32
         
         # Scale workers by GPU count (4 per GPU for max saturation)
