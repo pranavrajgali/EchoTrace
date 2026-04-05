@@ -235,14 +235,14 @@ def run_comprehensive_evaluation():
     datasets_config = [
         {
             'name': 'ASVspoof Dev',
-            'protocol': os.path.join(BASE_DIR, "data/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt"),
-            'data_dir': os.path.join(BASE_DIR, "data/LA/ASVspoof2019_LA_dev/flac"),
+            'protocol': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt",
+            'data_dir': "/home/jovyan/work/data/LA/LA/ASVspoof2019_LA_dev/flac",
             'dataset_class': ASVDataset,
             'subset_size': 2000
         },
         {
             'name': 'InTheWild Val',
-            'data_dir': os.path.join(BASE_DIR, "data/release_in_the_wild"),
+            'data_dir': "/home/jovyan/work/data/release_in_the_wild/release_in_the_wild",
             'dataset_class': InTheWildDataset,
             'subset': 'val',
             'subset_size': 1000
