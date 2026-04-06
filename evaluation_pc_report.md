@@ -13,11 +13,11 @@ The local evaluation of the `EchoTraceResNet` model (Epoch 1) confirms **state-o
 
 ## 📊 Key Performance Metrics
 
-| Dataset | Total Samples | Balanced Accuracy | F1-Score | ROC AUC | PR AUC (Avg Prec) |
+| Dataset | Total Samples | Balanced Accuracy | F1-Score | ROC AUC | EER (Equal Error Rate) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **ASVspoof Dev** | 24,844 | **95.48%** | 0.9924 | 0.9974 | **0.9997** |
-| **ASVspoof Eval** | 71,237 | **86.91%** | 0.8890 | 0.9385 | **0.9926** |
-| **In-The-Wild Test** | 3,179 | **98.74%** | 0.9847 | 0.9982 | **0.9979** |
+| **ASVspoof Dev** | 24,844 | **95.48%** | 0.9924 | 0.9974 | **2.39%** |
+| **ASVspoof Eval** | 71,237 | **86.91%** | 0.8890 | 0.9385 | **13.39%** |
+| **In-The-Wild Test** | 3,179 | **98.74%** | 0.9847 | 0.9982 | **1.27%** |
 
 ---
 

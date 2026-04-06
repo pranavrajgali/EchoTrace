@@ -148,7 +148,8 @@ def print_evaluation_results(results):
         print(f"📊 ROC AUC Score: {results['roc_auc']:.4f}")
 
     print(f"📊 Precision-Recall AUC (PR AUC): {results['pr_auc']:.4f}")
-
+    if results['eer'] is not None:
+        print(f"🔐 EER: {results['eer']:.4f}%")
     print(f"📋 Total Samples: {results['total_samples']}")
 
     # Confusion Matrix
@@ -190,6 +191,11 @@ def create_evaluation_plots(results_list, save_dir):
             axes[1].plot(results['fpr'], results['tpr'], color='darkorange', lw=2, 
                          label=f'ROC (AUC = {results["roc_auc"]:.4f})')
             axes[1].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+            
+            # Restore EER point for "Ultimatum" demo
+            if results['eer'] is not None:
+                val = results['eer'] / 100.0
+                axes[1].plot(val, 1-val, 'ro', label=f'EER = {results["eer"]:.2f}%')
             
             axes[1].set_xlim([0.0, 1.0])
             axes[1].set_ylim([0.0, 1.05])

@@ -107,6 +107,8 @@ def print_metrics(results):
     print(f"🎯 F1 Score:          {results['f1_score']:.4f}")
     print(f"📊 ROC AUC Score:     {results['roc_auc']:.4f}" if results['roc_auc'] else "N/A")
     print(f"📊 PR AUC Score:      {results['pr_auc']:.4f}")
+    if results['eer'] is not None:
+        print(f"🔐 EER:               {results['eer']:.4f}%")
     print(f"📋 Total Samples:      {results['total_samples']}")
 
 def create_plots(results_list, save_dir):
@@ -124,6 +126,11 @@ def create_plots(results_list, save_dir):
         if results['fpr'] is not None:
             axes[1].plot(results['fpr'], results['tpr'], color='darkorange', lw=2, label=f'ROC (AUC={results["roc_auc"]:.4f})')
             axes[1].plot([0, 1], [0, 1], 'navy', linestyle='--')
+            
+            # Restore EER point for demo "Ultimatum"
+            if results['eer'] is not None:
+                val = results['eer'] / 100.0
+                axes[1].plot(val, 1-val, 'ro', label=f'EER={results["eer"]:.2f}%')
             
             axes[1].set_title('ROC Curve')
             axes[1].legend()
