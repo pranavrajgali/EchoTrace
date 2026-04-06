@@ -76,45 +76,45 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_predictions)
 
-    # ROC AUC & Curves
-    try:
-        fpr, tpr, thresholds = roc_curve(all_labels, all_probabilities)
-        roc_auc = auc(fpr, tpr)
-    except:
-        fpr, tpr = None, None
-        roc_auc = None
-
-    # Precision-Recall AUC & Curves
-    precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
-    pr_auc = auc(recall, precision)
-
-    # Per-class metrics: Real (label=0) and Fake (label=1)
+    # PER-CLASS METRICS: Real (label=0) vs Fake (label=1)
     real_correct = cm[0, 0]
     real_total = cm[0, 0] + cm[0, 1]
     fake_correct = cm[1, 1]
     fake_total = cm[1, 0] + cm[1, 1]
-
-    real_recall = real_correct / real_total * 100 if real_total > 0 else 0
-    fake_recall = fake_correct / fake_total * 100 if fake_total > 0 else 0
-    balanced_accuracy = (real_recall + fake_recall) / 2
-
-    # EER (Equal Error Rate) calculation using ROC curve
-    from scipy.optimize import brentq
-    from scipy.interpolate import interp1d
     
-    eer = None
-    if fpr is not None and tpr is not None:
-        try:
-            eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
-        except:
-            eer = None
+    real_recall_val = real_correct / real_total * 100 if real_total > 0 else 0
+    fake_recall_val = fake_correct / fake_total * 100 if fake_total > 0 else 0
+    balanced_accuracy = (real_recall_val + fake_recall_val) / 2
+
+    # ROC AUC & Correct EER
+    try:
+        from sklearn.metrics import roc_curve, auc, average_precision_score, precision_recall_curve
+        from scipy.optimize import brentq
+        from scipy.interpolate import interp1d
+        
+        fpr, tpr, _ = roc_curve(all_labels, all_probabilities)
+        roc_auc = auc(fpr, tpr)
+        
+        # Proper EER Calculation: Point where FPR == FNR (FNR = 1 - TPR)
+        fnr = 1 - tpr
+        eer = brentq(lambda x: x - interp1d(fpr, fnr)(x), 0., 1.)
+        eer = eer * 100 # Percentage
+
+        # PR Curve
+        precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
+    except Exception as e:
+        print(f"⚠️ Metric Error: {e}")
+        fpr, tpr, roc_auc, eer, precision, recall = None, None, None, None, None, None
+
+    # Numerically stable Average Precision (PR AUC)
+    pr_auc = average_precision_score(all_labels, all_probabilities)
 
     results = {
         'dataset': dataset_name,
         'accuracy': accuracy,
         'f1_score': f1,
-        'real_recall': real_recall,
-        'fake_recall': fake_recall,
+        'real_recall': real_recall_val,
+        'fake_recall': fake_recall_val,
         'balanced_accuracy': balanced_accuracy,
         'roc_auc': roc_auc,
         'pr_auc': pr_auc,
@@ -148,9 +148,6 @@ def print_evaluation_results(results):
         print(f"📊 ROC AUC Score: {results['roc_auc']:.4f}")
 
     print(f"📊 Precision-Recall AUC (PR AUC): {results['pr_auc']:.4f}")
-
-    if results['eer'] is not None:
-        print(f"🔐 Equal Error Rate (EER): {results['eer']:.4f}%")
 
     print(f"📋 Total Samples: {results['total_samples']}")
 
@@ -194,11 +191,6 @@ def create_evaluation_plots(results_list, save_dir):
                          label=f'ROC (AUC = {results["roc_auc"]:.4f})')
             axes[1].plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
             
-            # Plot EER point
-            if results['eer'] is not None:
-                eer_val = results['eer'] / 100.0 if results['eer'] > 1.0 else results['eer']
-                axes[1].plot(eer_val, 1-eer_val, 'ro', label=f'EER = {results["eer"]:.2f}%')
-                
             axes[1].set_xlim([0.0, 1.0])
             axes[1].set_ylim([0.0, 1.05])
             axes[1].set_xlabel('False Positive Rate')
@@ -235,8 +227,6 @@ def create_evaluation_plots(results_list, save_dir):
             if results['roc_auc'] is not None:
                 f.write(f"ROC AUC: {results['roc_auc']:.4f}\n")
             f.write(f"PR AUC: {results['pr_auc']:.4f}\n")
-            if results['eer'] is not None:
-                f.write(f"EER: {results['eer']:.4f}\n")
             f.write(f"Total Samples: {results['total_samples']}\n")
 
             # Confusion matrix

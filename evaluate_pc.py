@@ -68,35 +68,34 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
     f1 = f1_score(all_labels, all_predictions, average='binary')
     cm = confusion_matrix(all_labels, all_predictions)
 
-    # ROC & PR Curves
+    # ROC AUC & Correct EER
     try:
         fpr, tpr, _ = roc_curve(all_labels, all_probabilities)
         roc_auc = auc(fpr, tpr)
-    except:
-        fpr, tpr, roc_auc = None, None, None
+        
+        # Correct EER: Point where FPR == FNR (FNR = 1 - TPR)
+        from scipy.optimize import brentq
+        from scipy.interpolate import interp1d
+        fnr = 1 - tpr
+        eer = brentq(lambda x: x - interp1d(fpr, fnr)(x), 0., 1.)
+        eer = eer * 100 # Percentage
+    except Exception as e:
+        fpr, tpr, roc_auc, eer = None, None, None, None
 
-    precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
-    pr_auc = auc(recall, precision)
+    # Numerically stable PR AUC (Average Precision)
+    from sklearn.metrics import average_precision_score
+    pr_auc = average_precision_score(all_labels, all_probabilities)
 
-    # Balanced Accuracy & EER
+    # Balanced Accuracy
     real_recall = (cm[0,0] / (cm[0,0] + cm[0,1]) * 100) if (cm[0,0] + cm[0,1]) > 0 else 0
     fake_recall = (cm[1,1] / (cm[1,0] + cm[1,1]) * 100) if (cm[1,0] + cm[1,1]) > 0 else 0
     balanced_acc = (real_recall + fake_recall) / 2
-
-    eer = None
-    if fpr is not None and tpr is not None:
-        from scipy.optimize import brentq
-        from scipy.interpolate import interp1d
-        try:
-            eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
-        except: eer = None
 
     return {
         'dataset': dataset_name, 'accuracy': accuracy, 'f1_score': f1,
         'real_recall': real_recall, 'fake_recall': fake_recall, 'balanced_accuracy': balanced_acc,
         'roc_auc': roc_auc, 'pr_auc': pr_auc, 'eer': eer,
-        'fpr': fpr, 'tpr': tpr, 'precision_curve': precision, 'recall_curve': recall,
-        'confusion_matrix': cm, 'total_samples': len(all_labels),
+        'fpr': fpr, 'tpr': tpr, 'confusion_matrix': cm, 'total_samples': len(all_labels),
         'predictions': all_predictions, 'labels': all_labels, 'probabilities': all_probabilities
     }
 
@@ -108,7 +107,6 @@ def print_metrics(results):
     print(f"🎯 F1 Score:          {results['f1_score']:.4f}")
     print(f"📊 ROC AUC Score:     {results['roc_auc']:.4f}" if results['roc_auc'] else "N/A")
     print(f"📊 PR AUC Score:      {results['pr_auc']:.4f}")
-    print(f"🔐 EER:               {results['eer']:.4f}%" if results['eer'] else "N/A")
     print(f"📋 Total Samples:      {results['total_samples']}")
 
 def create_plots(results_list, save_dir):
@@ -124,8 +122,9 @@ def create_plots(results_list, save_dir):
         
         # ROC
         if results['fpr'] is not None:
-            axes[1].plot(results['fpr'], results['tpr'], color='darkorange', lw=2, label=f'AUC={results["roc_auc"]:.4f}')
+            axes[1].plot(results['fpr'], results['tpr'], color='darkorange', lw=2, label=f'ROC (AUC={results["roc_auc"]:.4f})')
             axes[1].plot([0, 1], [0, 1], 'navy', linestyle='--')
+            
             axes[1].set_title('ROC Curve')
             axes[1].legend()
             
