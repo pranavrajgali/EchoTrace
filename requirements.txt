@@ -54,8 +54,8 @@ streamlit==1.40.2
 streamlit-mic-recorder
 sympy==1.14.0
 threadpoolctl==3.6.0
-torch>=2.5.0
-torchvision>=0.20.0
+torch==2.4.2
+torchvision==0.19.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.6.3
