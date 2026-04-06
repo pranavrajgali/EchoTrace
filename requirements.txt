@@ -19,14 +19,14 @@ joblib==1.5.3
 kiwisolver==1.4.9
 lazy_loader==0.4
 librosa==0.10.2
-llvmlite==0.46.0
+llvmlite>=0.43.0
 MarkupSafe==3.0.3
 matplotlib==3.10.8
 mpmath==1.3.0
 msgpack==1.1.2
 networkx==3.6.1
-numba==0.64.0
-numpy==1.26.4
+numba>=0.60.0
+numpy>=2.1.0
 opencv-python==4.13.0.92
 packaging>=20.0,<25
 pandas>=1.4.0,<3
@@ -40,7 +40,7 @@ pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 requests==2.32.5
 scikit-learn==1.8.0
-scipy==1.13.1
+scipy>=1.14.0
 seaborn==0.13.2
 setuptools==82.0.0
 six==1.17.0
@@ -54,8 +54,8 @@ streamlit==1.40.2
 streamlit-mic-recorder
 sympy==1.14.0
 threadpoolctl==3.6.0
-torch==2.10.0
-torchvision==0.25.0
+torch>=2.5.0
+torchvision>=0.20.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.6.3

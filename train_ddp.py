@@ -15,7 +15,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
 from core.model import EchoTraceResNet, get_loss, get_optimizer
-from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, MultiDataset, LibriSpeechDataset
+from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, LibriSpeechDataset, build_combined_dataset
 
 # ── Config ────────────────────────────────────────────────────
 WORLD_SIZE     = min(4, torch.cuda.device_count())
@@ -108,7 +108,7 @@ def get_loader(rank, world_size, logger):
         augment_prob=0.5,  # Higher augmentation for real samples (prevents "clean = real" shortcut)
     )
 
-    dataset = MultiDataset(asv, wf, itw, librispeech)
+    dataset = build_combined_dataset(asv, wf, itw, librispeech)
     logger.info(f"Total training samples: {len(dataset)}")
 
     sampler = DistributedSampler(

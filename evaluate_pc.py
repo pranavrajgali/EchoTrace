@@ -77,14 +77,29 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
         from scipy.optimize import brentq
         from scipy.interpolate import interp1d
         fnr = 1 - tpr
-        eer = brentq(lambda x: x - interp1d(fpr, fnr)(x), 0., 1.)
-        eer = eer * 100 # Percentage
+        fpr_clipped = np.clip(fpr, 1e-6, 1 - 1e-6)
+        fnr_clipped = np.clip(fnr, 1e-6, 1 - 1e-6)
+        sort_idx = np.argsort(fpr_clipped)
+        fpr_sorted = fpr_clipped[sort_idx]
+        fnr_sorted = fnr_clipped[sort_idx]
+        _, unique_idx = np.unique(fpr_sorted, return_index=True)
+        fpr_unique = fpr_sorted[unique_idx]
+        fnr_unique = fnr_sorted[unique_idx]
+        eer_fraction = brentq(
+            lambda x: x - interp1d(fpr_unique, fnr_unique,
+                                    bounds_error=False,
+                                    fill_value=(fnr_unique[0], fnr_unique[-1]))(x),
+            fpr_unique[0], fpr_unique[-1]
+        )
+        eer = eer_fraction * 100
     except Exception as e:
+        print(f"⚠️ EER calculation failed: {e}")
         fpr, tpr, roc_auc, eer = None, None, None, None
 
     # Numerically stable PR AUC (Average Precision)
-    from sklearn.metrics import average_precision_score
+    from sklearn.metrics import average_precision_score, precision_recall_curve
     pr_auc = average_precision_score(all_labels, all_probabilities)
+    precision_curve, recall_curve, _ = precision_recall_curve(all_labels, all_probabilities)
 
     # Balanced Accuracy
     real_recall = (cm[0,0] / (cm[0,0] + cm[0,1]) * 100) if (cm[0,0] + cm[0,1]) > 0 else 0
@@ -96,7 +111,8 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
         'real_recall': real_recall, 'fake_recall': fake_recall, 'balanced_accuracy': balanced_acc,
         'roc_auc': roc_auc, 'pr_auc': pr_auc, 'eer': eer,
         'fpr': fpr, 'tpr': tpr, 'confusion_matrix': cm, 'total_samples': len(all_labels),
-        'predictions': all_predictions, 'labels': all_labels, 'probabilities': all_probabilities
+        'predictions': all_predictions, 'labels': all_labels, 'probabilities': all_probabilities,
+        'precision_curve': precision_curve, 'recall_curve': recall_curve
     }
 
 def print_metrics(results):

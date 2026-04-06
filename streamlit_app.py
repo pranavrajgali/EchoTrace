@@ -486,7 +486,7 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
     return results
 
 
-def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
+def render_confidence_timeline(audio_np: np.ndarray, model_path: str, ctx):
     ctx.markdown('''<div class="section-label" style="margin-top:2rem">Confidence Timeline</div>''',
                  unsafe_allow_html=True)
     ctx.markdown('''
@@ -502,7 +502,7 @@ def render_confidence_timeline(audio_bytes: bytes, model_path: str, ctx):
         color:#5A5A5E;letter-spacing:0.1em;text-align:center;">
         Running sliding-window inference…</p>''', unsafe_allow_html=True)
     try:
-        points = compute_confidence_timeline(audio_bytes)
+        points = compute_confidence_timeline(audio_np)
     except Exception as e:
         ctx.error(f"Timeline error: {e}")
         _spin.empty()
@@ -721,7 +721,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
 
             # Confidence Timeline
             with ctx:
-                render_confidence_timeline(audio_np, ctx)
+                render_confidence_timeline(audio_np, None, ctx)
 
             ctx.markdown('<div class="section-label" style="margin-top:2rem">Grad-CAM Spatial Pulse</div>', unsafe_allow_html=True)
             ctx.image(str(report_path), use_container_width=True)

@@ -349,32 +349,22 @@ class InTheWildDataset(Dataset):
         return tensor, scalars, self.labels[idx]
 
 
-# ── MultiDataset ──────────────────────────────────────────────
-class MultiDataset(Dataset):
-    """
-    Round-robin across ASVspoof, WaveFake, InTheWild, and optionally LibriSpeech.
-    Every __getitem__ returns (tensor, scalars, label).
-    """
-    def __init__(self, asv, wavefake, wild, librispeech=None):
-        datasets = [asv, wavefake, wild]
-        if librispeech is not None:
-            datasets.append(librispeech)
-        
-        if any(d is None for d in [asv, wavefake, wild]):
-            raise ValueError("ASV, WaveFake, and InTheWild datasets are mandatory.")
-        
-        self.datasets  = datasets
-        self.total_len = sum(len(d) for d in self.datasets)
-        num_sources = len(self.datasets)
-        print(f"[MultiDataset] Total samples: {self.total_len} | Sources: {num_sources}")
+# ── MultiDataset (kept for import compatibility) + build_combined_dataset ─
+from torch.utils.data import ConcatDataset
 
-    def __len__(self):
-        return self.total_len
-
-    def __getitem__(self, idx):
-        ds_idx      = idx % len(self.datasets)
-        local_idx   = np.random.randint(0, len(self.datasets[ds_idx]))
-        return self.datasets[ds_idx][local_idx]
+def build_combined_dataset(asv, wavefake, wild, librispeech=None):
+    """
+    Replaces MultiDataset. Uses ConcatDataset for deterministic,
+    non-duplicating indexing. DistributedSampler works correctly with this.
+    Every sample is seen exactly once per epoch.
+    """
+    datasets = [asv, wavefake, wild]
+    if librispeech is not None:
+        datasets.append(librispeech)
+    combined = ConcatDataset(datasets)
+    total = sum(len(d) for d in datasets)
+    print(f"[CombinedDataset] Total samples: {total} | Sources: {len(datasets)}")
+    return combined
 
 
 # ── LibriSpeech ───────────────────────────────────────────────

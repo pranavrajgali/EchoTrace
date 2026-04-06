@@ -97,8 +97,21 @@ def evaluate_dataset(model, dataloader, device, dataset_name):
         
         # Proper EER Calculation: Point where FPR == FNR (FNR = 1 - TPR)
         fnr = 1 - tpr
-        eer = brentq(lambda x: x - interp1d(fpr, fnr)(x), 0., 1.)
-        eer = eer * 100 # Percentage
+        fpr_clipped = np.clip(fpr, 1e-6, 1 - 1e-6)
+        fnr_clipped = np.clip(fnr, 1e-6, 1 - 1e-6)
+        sort_idx = np.argsort(fpr_clipped)
+        fpr_sorted = fpr_clipped[sort_idx]
+        fnr_sorted = fnr_clipped[sort_idx]
+        _, unique_idx = np.unique(fpr_sorted, return_index=True)
+        fpr_unique = fpr_sorted[unique_idx]
+        fnr_unique = fnr_sorted[unique_idx]
+        eer_fraction = brentq(
+            lambda x: x - interp1d(fpr_unique, fnr_unique,
+                                    bounds_error=False,
+                                    fill_value=(fnr_unique[0], fnr_unique[-1]))(x),
+            fpr_unique[0], fpr_unique[-1]
+        )
+        eer = eer_fraction * 100
 
         # PR Curve
         precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
