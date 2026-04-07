@@ -48,14 +48,14 @@ LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 BATCH_PER_GPU  = 16
 
 # ── TRAINING CONFIG (edit these values for different runs) ──
-NUM_EPOCHS         = 2
+NUM_EPOCHS         = 3
 AUGMENT_PROB       = 0.2
 
 # Dataset subset sizes
-ASV_SUBSET         = 1500
-WAVEFAKE_SUBSET    = 8000
-ITW_SUBSET         = 2500
-LIBRISPEECH_SUBSET = 8000
+ASV_SUBSET         = 4000
+WAVEFAKE_SUBSET    = 20000
+ITW_SUBSET         = 6000
+LIBRISPEECH_SUBSET = 20000
 
 # Validation set size (from InTheWild val split)
 VAL_SIZE           = 1000
