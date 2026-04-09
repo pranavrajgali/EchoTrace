@@ -45,20 +45,20 @@ CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints"
 FINAL_PATH     = "/home/jovyan/work/EchoTrace/ensemble_model.pth"
 LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 
-BATCH_PER_GPU  = 16
+BATCH_PER_GPU  = 32
 
 # ── TRAINING CONFIG (edit these values for different runs) ──
-NUM_EPOCHS         = 7
+NUM_EPOCHS         = 3
 AUGMENT_PROB       = 0.2
 
 # Dataset subset sizes
-ASV_SUBSET         = 20000
-WAVEFAKE_SUBSET    = 80000
-ITW_SUBSET         = 11000
-LIBRISPEECH_SUBSET = 85000
+ASV_SUBSET         = 10000
+WAVEFAKE_SUBSET    = 50000
+ITW_SUBSET         = 12000
+LIBRISPEECH_SUBSET = 28000
 
 # Validation set size (from InTheWild val split)
-VAL_SIZE           = None
+VAL_SIZE           = 3000
 
 
 # ── Logging ───────────────────────────────────────────────────
@@ -142,7 +142,7 @@ def get_loader(rank, world_size, logger):
         dataset,
         batch_size=BATCH_PER_GPU,
         sampler=sampler,
-        num_workers=4,           # 4 per GPU × 4 GPUs = 16 workers for librosa feature extraction
+        num_workers=6,           # Increased to 6 per GPU for 100k run
         pin_memory=True,
         drop_last=True,
         persistent_workers=True, # don't restart workers between epochs
