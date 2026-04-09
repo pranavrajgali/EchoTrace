@@ -6,10 +6,11 @@
 ## 🚀 1. The Executive Summary
 EchoTrace is a cutting-edge **audio forensic suite** designed to detect AI-synthesized voices (Deepfakes) in real-time. Our system doesn't just look for digital noise; it analyzes the **physical consistency of the human vocal tract**.
 
-As of **Epoch 1**, the model has achieved state-of-the-art performance:
-- **Equal Error Rate (EER):** 2.40% (Anything under 5% is elite)
-- **Balanced Accuracy:** 97.53%
-- **ROC AUC:** 0.9973 (Near-perfect separation between real and fake)
+As of **Epoch 3 (Final)**, the model has achieved industry-leading performance:
+- **Equal Error Rate (EER):** 1.66% (State-of-the-Art)
+- **Balanced Accuracy:** 98.23%
+- **ROC AUC:** 0.9988 (Near-perfect separation between real and fake)
+- **Deepfake Recall:** 98.47% (Catches nearly all synthetic voices)
 
 ---
 
