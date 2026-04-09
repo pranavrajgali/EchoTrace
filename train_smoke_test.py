@@ -21,6 +21,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["NUMBA_NUM_THREADS"] = "1"
 
 from core.model import EchoTraceResNet, get_loss, get_optimizer
 from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, LibriSpeechDataset, build_combined_dataset
