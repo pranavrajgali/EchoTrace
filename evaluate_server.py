@@ -29,7 +29,7 @@ warnings.filterwarnings('ignore', message='Trying to estimate tuning from empty 
 
 # Scientific/metrics
 from sklearn.metrics import (
-    roc_curve, auc, confusion_matrix, balanced_accuracy_score,
+    roc_curve, confusion_matrix, balanced_accuracy_score,
     precision_score, recall_score, f1_score, roc_auc_score
 )
 from scipy.optimize import brentq
@@ -442,14 +442,19 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
     for dataset_name, metrics in results_dict.items():
         bal_acc = metrics['bal_acc']
         eer = metrics['eer']
-        eer_class = 'metric-good' if eer < 5 else ('metric-warning' if eer < 10 else 'metric-bad')
+        if eer is None:
+            eer_display = "N/A"
+            eer_class = ""
+        else:
+            eer_display = f"{eer:.2f}%"
+            eer_class = 'metric-good' if eer < 5 else ('metric-warning' if eer < 10 else 'metric-bad')
         
         html_content += f"""
             <tr>
                 <td><strong>{dataset_name}</strong></td>
                 <td>{metrics['n_samples']}</td>
                 <td>{bal_acc:.2f}%</td>
-                <td class="{eer_class}">{eer:.2f}%</td>
+                <td class="{eer_class}">{eer_display}</td>
                 <td>{metrics['roc_auc']:.4f}</td>
                 <td>{metrics['real_recall']:.2f}%</td>
                 <td>{metrics['fake_recall']:.2f}%</td>
@@ -481,7 +486,13 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
     if asv_eval_attacks:
         attack_rows = ""
         for attack, data in sorted(asv_eval_attacks.items()):
-            eer_class = 'metric-good' if data['eer'] < 5 else ('metric-warning' if data['eer'] < 10 else 'metric-bad')
+            eer = data['eer']
+            if eer is None:
+                eer_display = "N/A"
+                eer_class = ""
+            else:
+                eer_display = f"{eer:.2f}%"
+                eer_class = 'metric-good' if eer < 5 else ('metric-warning' if eer < 10 else 'metric-bad')
             attack_type, technique = ATTACK_INFO.get(attack, ("Unknown", "Unknown"))
             attack_rows += f"""
             <tr>
@@ -489,7 +500,7 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
                 <td>{attack_type}</td>
                 <td>{technique}</td>
                 <td>{data['n_samples']}</td>
-                <td class="{eer_class}">{data['eer']:.2f}%</td>
+                <td class="{eer_class}">{eer_display}</td>
                 <td>{data['fake_recall']:.2f}%</td>
             </tr>
 """
@@ -628,7 +639,8 @@ def main():
         
         print(f"  {dataset_name}:")
         print(f"    Bal. Accuracy: {metrics['bal_acc']:.2f}%")
-        print(f"    EER: {metrics['eer']:.2f}%")
+        eer_str = f"{metrics['eer']:.2f}%" if metrics['eer'] is not None else "N/A"
+        print(f"    EER: {eer_str}")
         print(f"    ROC-AUC: {metrics['roc_auc']:.4f}")
         print(f"    Fake Recall: {metrics['fake_recall']:.2f}%")
         print()
