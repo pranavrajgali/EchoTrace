@@ -30,7 +30,7 @@ warnings.filterwarnings('ignore', message='Trying to estimate tuning from empty 
 # Scientific/metrics
 from sklearn.metrics import (
     roc_curve, confusion_matrix, balanced_accuracy_score,
-    precision_score, recall_score, f1_score, roc_auc_score
+    precision_score, f1_score, roc_auc_score
 )
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
@@ -40,6 +40,10 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 
+# Image transforms
+import torchvision.transforms as transforms
+from PIL import Image
+
 # EchoTrace
 from core.model import EchoTraceResNet
 from core.preprocess import load_audio, build_feature_image, extract_scalar_features
@@ -48,6 +52,16 @@ from core.preprocess import load_audio, build_feature_image, extract_scalar_feat
 SR = 16000
 DURATION = 4.0
 BATCH_SIZE = 32
+
+# ── ImageNet Normalization (MUST match training) ──
+# Training uses these exact statistics from torchvision.models
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
+_EVAL_TRANSFORM = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+])
 
 
 # ── EER Computation (inlined from core/evaluate.py) ──
@@ -106,10 +120,14 @@ class SimpleAudioDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         try:
             audio = load_audio(self.file_list[idx], target_sr=SR, duration=DURATION, random_crop=False)
-            image = build_feature_image(audio, sr=SR)
-            scalars = extract_scalar_features(audio, sr=SR)
+            image = build_feature_image(audio, sr=SR)  # Returns (224, 224, 3) uint8
+            scalars = extract_scalar_features(audio, sr=SR)  # Returns (8,) float32 in [0, 1]
             
-            image_tensor = torch.tensor(image, dtype=torch.float32) / 255.0
+            # Apply ImageNet normalization transform (MUST match training pipeline in core/preprocess.py)
+            # Image is (224, 224, 3) uint8 → convert to PIL → ToTensor() → Normalize()
+            image_pil = Image.fromarray(image)  # PIL Image expects uint8 array
+            image_tensor = _EVAL_TRANSFORM(image_pil)  # (3, 224, 224) ImageNet-normalized
+            
             scalars_tensor = torch.tensor(scalars, dtype=torch.float32)
             label_tensor = torch.tensor(self.label_list[idx], dtype=torch.long)
             
@@ -117,9 +135,13 @@ class SimpleAudioDataset(torch.utils.data.Dataset):
         except Exception as e:
             # Gracefully skip corrupted files
             print(f"Error loading {self.file_list[idx]}: {e}")
-            # Return zeros as fallback (will inflate metrics slightly, but avoids crash)
+            # Return ImageNet-normalized zeros as fallback
+            # Creates a tensor centered at zero in normalized ImageNet space
+            normalized_zeros = torch.zeros(3, 224, 224, dtype=torch.float32)
+            for c in range(3):
+                normalized_zeros[c] -= IMAGENET_MEAN[c] / IMAGENET_STD[c]
             return (
-                torch.zeros(3, 224, 224, dtype=torch.float32),
+                normalized_zeros,
                 torch.zeros(8, dtype=torch.float32),
                 torch.tensor(self.label_list[idx], dtype=torch.long)
             )
@@ -238,7 +260,7 @@ def compute_metrics(y_true, y_score, threshold=0.5):
     
     # Per-class recalls
     # Note: tp/fn/fp are oriented with fake=1 as positive class
-    # Real recall = tn / (tn + fp) — % of actual reals correctly identified
+    # Real recall = tn / (tn + fn) — % of actual reals correctly identified
     # Fake recall = tp / (tp + fn) — % of actual fakes correctly identified
     real_total = (y_true == 0).sum()
     real_recall = tn / real_total * 100 if real_total > 0 else 0
@@ -582,16 +604,16 @@ def main():
     
     print("  ASVspoof Dev:")
     asv_dev_files, asv_dev_labels, asv_dev_systems = parse_asv_protocol(
-        Path(args.asv_root) / "../ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt",
-        Path(args.asv_root) / "../ASVspoof2019_LA_dev/flac"
+        Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt",
+        Path(args.asv_root) / "ASVspoof2019_LA_dev/flac"
     )
     asv_dev_dataset = SimpleAudioDataset(asv_dev_files, asv_dev_labels, "ASVspoof Dev")
     asv_dev_loader = torch.utils.data.DataLoader(asv_dev_dataset, batch_size=BATCH_SIZE, num_workers=4)
     
     print("  ASVspoof Eval:")
     asv_eval_files, asv_eval_labels, asv_eval_systems = parse_asv_protocol(
-        Path(args.asv_root) / "../ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
-        Path(args.asv_root) / "../ASVspoof2019_LA_eval/flac"
+        Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
+        Path(args.asv_root) / "ASVspoof2019_LA_eval/flac"
     )
     asv_eval_dataset = SimpleAudioDataset(asv_eval_files, asv_eval_labels, "ASVspoof Eval")
     asv_eval_loader = torch.utils.data.DataLoader(asv_eval_dataset, batch_size=BATCH_SIZE, num_workers=4)

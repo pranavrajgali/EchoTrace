@@ -62,31 +62,141 @@ class AudioAugmenter:
 # ── Feature extraction ────────────────────────────────────────
 def extract_scalar_features(audio, sr=16000):
     """
-    8-dim forensic scalar vector. Stable features only (no pyin for DDP speed).
-    Returns float32 numpy array, clipped to [0, 1].
+    8-dim forensically-targeted scalar feature vector for synthetic speech detection.
+    
+    Features (in order):
+      [0] spectral_flatness   — noise-like vs tonal (vocoders are too tonal)
+      [1] zcr                 — zero crossing rate (synthetic speech has unnatural consistency)
+      [2] f1_formant          — F1 frequency (LPC-derived)
+      [3] f2_formant          — F2 frequency (LPC-derived)
+      [4] f3_formant          — F3 frequency (LPC-derived)
+      [5] voiced_ratio        — fraction of voiced frames (vocoders have unnatural ratios)
+      [6] hnr                 — harmonic-to-noise ratio in dB (vocoders are too clean)
+      [7] cpp                 — cepstral peak prominence (vocoders too regular)
+    
+    Returns: float32 numpy array of shape (8,), normalized to [0, 1].
     """
     try:
-        zcr      = np.mean(librosa.feature.zero_crossing_rate(y=audio))
+        # [0] Spectral Flatness — Wiener entropy / spectral smoothness
+        #   Theoretically [0, 1] but clip to handle numerical edge cases
         flatness = np.mean(librosa.feature.spectral_flatness(y=audio))
-        centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
-        rolloff  = librosa.feature.spectral_rolloff(y=audio, sr=sr)
-
+        flatness = np.clip(flatness, 0, 1)
+        
+        # [1] Zero Crossing Rate
+        #   Normalized to [0, 1] by Nyquist in librosa, but clip for safety
+        zcr = np.mean(librosa.feature.zero_crossing_rate(y=audio))
+        zcr = np.clip(zcr, 0, 1)
+        
+        # [2-4] Formants via LPC (Linear Predictive Coding)
+        #   Extract first 3 formants from LPC polynomial roots
+        lpc_coefs = librosa.lpc(audio, order=8)
+        roots = np.roots(lpc_coefs)
+        angles = np.angle(roots)
+        freqs = angles * (sr / (2 * np.pi))
+        
+        # Keep only positive frequencies below Nyquist
+        formants = sorted([f for f in freqs if 0 < f < sr/2])
+        
+        # Pad or truncate to exactly 3 formants
+        while len(formants) < 3:
+            formants.append(sr / 2)  # Fallback to Nyquist
+        formants = formants[:3]
+        
+        f1, f2, f3 = formants[0], formants[1], formants[2]
+        
+        # Normalize formants to [0, 1] by dividing by Nyquist
+        nyquist = sr / 2
+        f1_norm = f1 / nyquist
+        f2_norm = f2 / nyquist
+        f3_norm = f3 / nyquist
+        
+        # [5] Voiced Ratio — fraction of voiced frames via VAD / energy thresholding
+        #   Use librosa.effects.split() to identify non-silent frames
+        S = librosa.feature.melspectrogram(y=audio, sr=sr)
+        energy = np.mean(S, axis=0)  # (n_frames,)
+        threshold = np.mean(energy) * 0.4  # 40% of mean energy
+        voiced_frames = np.sum(energy > threshold)
+        voiced_ratio = voiced_frames / max(len(energy), 1)
+        
+        # [6] Harmonic-to-Noise Ratio (HNR) — via autocorrelation
+        #   Compute autocorrelation and find fundamental period
+        autocorr = np.correlate(audio, audio, mode='full')
+        center = len(autocorr) // 2
+        autocorr = autocorr[center:]  # Keep positive lags only
+        autocorr = autocorr / (autocorr[0] + 1e-9)  # Normalize by lag-0
+        
+        # Find first peak after lag 0 (fundamental period indicator)
+        min_lag = int(sr / 500)  # ~2ms (floor for pitch)
+        max_lag = int(sr / 50)   # ~20ms (ceiling for pitch)
+        if max_lag < len(autocorr) and min_lag < max_lag:
+            peak_lag_idx = min_lag + np.argmax(autocorr[min_lag:max_lag])
+            peak_autocorr = autocorr[peak_lag_idx]
+        else:
+            peak_autocorr = 0.5
+        
+        # HNR = ratio of harmonic energy to noise
+        hnr_linear = peak_autocorr / (1.0 - peak_autocorr + 1e-7)
+        hnr_db = 10.0 * np.log10(hnr_linear + 1e-7)
+        # Normalize HNR to reasonable range [-20, 40] → [0, 1]
+        hnr_norm = np.clip((hnr_db + 20) / 60, 0, 1)
+        
+        # [7] Cepstral Peak Prominence (CPP) — via cepstrum
+        #   CPP = cepstrum peak - fitted regression line
+        #   High CPP = voicing present; very stable CPP = synthetic
+        S = np.abs(librosa.stft(audio, n_fft=2048, hop_length=256))
+        power_spectrum = np.mean(S, axis=1)  # Average over time
+        power_spectrum = np.maximum(power_spectrum, 1e-10)
+        log_spectrum = np.log(power_spectrum)
+        
+        # Cepstrum is inverse FFT of log spectrum
+        cepstrum = np.fft.irfft(log_spectrum).real
+        
+        if len(cepstrum) > 20:
+            # Find peak in quefrency range (pitch ~ 50-500 Hz)
+            pitch_min = int(sr / 500)  # ~2ms
+            pitch_max = int(sr / 50)   # ~20ms
+            if pitch_max < len(cepstrum):
+                cep_peak_idx = pitch_min + np.argmax(cepstrum[pitch_min:pitch_max])
+                cep_peak = cepstrum[cep_peak_idx]
+                
+                # Fit regression line through cepstrum to estimate baseline
+                x = np.arange(len(cepstrum))
+                z = np.polyfit(x, cepstrum, 1)
+                baseline = np.polyval(z, cep_peak_idx)
+                
+                cpp = cep_peak - baseline
+            else:
+                cpp = 0.0
+        else:
+            cpp = 0.0
+        
+        # Normalize CPP to [0, 1] — typical range is [-5, 20]
+        cpp_norm = np.clip((cpp + 5) / 25, 0, 1)
+        
+        # Assemble 8-dim vector in the specified order
         scalars = np.array([
-            zcr,
-            flatness,
-            np.mean(centroid),
-            np.std(centroid),
-            np.mean(rolloff),
-            np.std(rolloff),
-            0.0,  # placeholder — jitter reserved for inference
-            0.0,  # placeholder — shimmer reserved for inference
+            flatness,      # [0] Spectral Flatness
+            zcr,           # [1] Zero Crossing Rate
+            f1_norm,       # [2] F1 Formant (normalized)
+            f2_norm,       # [3] F2 Formant (normalized)
+            f3_norm,       # [4] F3 Formant (normalized)
+            voiced_ratio,  # [5] Voiced Ratio
+            hnr_norm,      # [6] HNR (dB, normalized)
+            cpp_norm,      # [7] CPP (normalized)
         ], dtype=np.float32)
-    except Exception:
+        
+    except Exception as e:
+        # Fallback: return zeros if any computation fails
+        print(f"[extract_scalar_features] Warning: exception during feature extraction: {e}")
         scalars = np.zeros(8, dtype=np.float32)
 
+    # Guard against NaN/Inf
     scalars = np.nan_to_num(scalars, nan=0.0, posinf=1.0, neginf=0.0)
-    max_val = np.max(np.abs(scalars))
-    return np.clip(scalars / (max_val + 1e-9), 0, 1)
+    
+    # Final clip to [0, 1]
+    scalars = np.clip(scalars, 0, 1)
+    
+    return scalars
 
 
 def build_feature_image(audio, sr=16000):
