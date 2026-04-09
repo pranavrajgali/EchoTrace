@@ -382,7 +382,7 @@ def train(rank, world_size):
             if val_loader is not None:
                 model.eval()
                 val_loss, val_bal_acc, val_real_recall, val_fake_recall, val_eer, val_roc_auc = evaluate(
-                    model, val_loader, device, criterion
+                    model.module, val_loader, device, criterion
                 )
                 model.train()
                 
@@ -409,6 +409,10 @@ def train(rank, world_size):
             # Also save final model weights for inference
             torch.save(model.module.state_dict(), FINAL_PATH)
             logger.info(f"Saved checkpoint -> {ckpt_path}")
+
+        # Ensure all ranks wait for Rank 0 to finish evaluation and saving
+        if world_size > 1:
+            dist.barrier()
 
     cleanup()
     if rank == 0:
