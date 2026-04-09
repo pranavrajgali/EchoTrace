@@ -22,7 +22,7 @@ ASV_DIR         = os.path.join(DATA_ROOT, "LA/LA/ASVspoof2019_LA_train/flac")
 WAVEFAKE_DIR    = os.path.join(DATA_ROOT, "wavefake-test/wavefake-test")
 ITW_DIR         = os.path.join(DATA_ROOT, "release_in_the_wild/release_in_the_wild")
 LIBRISPEECH_DIR = os.path.join(DATA_ROOT, "LibriSpeech")
-MUSAN_DIR       = os.path.join(DATA_ROOT, "noise/musan")
+MUSAN_DIR       = os.path.join(DATA_ROOT, "noise/musan/musan")
 
 
 # ── Audio Augmenter ───────────────────────────────────────────
