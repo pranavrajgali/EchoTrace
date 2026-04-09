@@ -104,7 +104,7 @@ async def run_inference(file_bytes: bytes) -> dict:
         audio = audio / peak
 
     if len(audio) < TARGET_LEN:
-        audio = np.pad(audio, (0, TARGET_LEN - len(audio)))
+        audio = np.pad(audio, (0, TARGET_LEN - len(audio)), mode='reflect')
     else:
         audio = audio[:TARGET_LEN]
 

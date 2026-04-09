@@ -41,24 +41,24 @@ WAVEFAKE_DIR    = "/home/jovyan/work/data/wavefake-test/wavefake-test"
 ITW_DIR         = "/home/jovyan/work/data/release_in_the_wild/release_in_the_wild"
 LIBRISPEECH_DIR = "/home/jovyan/work/data/LibriSpeech"
 
-CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints"
-FINAL_PATH     = "/home/jovyan/work/EchoTrace/ensemble_model.pth"
-LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
+CHECKPOINT_DIR = "/home/jovyan/work/EchoTrace/checkpoints_smoke"
+FINAL_PATH     = "/home/jovyan/work/EchoTrace/smoke_model.pth"
+LOG_PATH       = "/home/jovyan/work/EchoTrace/smoke_train.log"
 
 BATCH_PER_GPU  = 16
 
 # ── TRAINING CONFIG (edit these values for different runs) ──
-NUM_EPOCHS         = 7
+NUM_EPOCHS         = 1
 AUGMENT_PROB       = 0.2
 
 # Dataset subset sizes
-ASV_SUBSET         = 20000
-WAVEFAKE_SUBSET    = 80000
-ITW_SUBSET         = 11000
-LIBRISPEECH_SUBSET = 85000
+ASV_SUBSET         = 128
+WAVEFAKE_SUBSET    = 128
+ITW_SUBSET         = 128
+LIBRISPEECH_SUBSET = 128
 
 # Validation set size (from InTheWild val split)
-VAL_SIZE           = None
+VAL_SIZE           = 128
 
 
 # ── Logging ───────────────────────────────────────────────────

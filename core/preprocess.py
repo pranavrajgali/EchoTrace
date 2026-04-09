@@ -33,7 +33,8 @@ class AudioAugmenter:
     """
     def __init__(self, p=0.3, musan_path=MUSAN_DIR):
         self.p = p
-        self.musan_files = glob.glob(os.path.join(musan_path, "**/*.wav"), recursive=True)
+        # Only use the 'noise' subfolder from MUSAN (ignoring 'music' and 'speech')
+        self.musan_files = glob.glob(os.path.join(musan_path, "noise", "**/*.wav"), recursive=True)
         if not self.musan_files:
             print(f"[augment] WARNING: No MUSAN files found at {musan_path} — using white noise fallback")
 
@@ -43,9 +44,15 @@ class AudioAugmenter:
         if self.musan_files:
             noise_path = random.choice(self.musan_files)
             try:
-                noise, _ = librosa.load(noise_path, sr=16000)
+                # Optimized MUSAN load (some musan tracks are 5 mins long!)
+                target_duration = len(audio) / 16000.0
+                file_dur = librosa.get_duration(path=noise_path)
+                max_start = file_dur - target_duration
+                offset = random.uniform(0, max_start) if max_start > 0 else 0
+                noise, _ = librosa.load(noise_path, sr=16000, offset=offset, duration=target_duration)
+                
                 if len(noise) < len(audio):
-                    noise = np.pad(noise, (0, len(audio) - len(noise)))
+                    noise = np.pad(noise, (0, len(audio) - len(noise)), mode='reflect')
                 else:
                     noise = noise[:len(audio)]
                 snr_factor = random.uniform(0.01, 0.1)
@@ -249,24 +256,23 @@ def load_audio(file_path, target_sr=16000, duration=4.0, random_crop=False):
     """
     target_len = int(target_sr * duration)
     try:
-        audio, _ = librosa.load(file_path, sr=target_sr, mono=True)
+        if random_crop:
+            # Query duration without loading the full file into memory
+            file_dur = librosa.get_duration(path=file_path)
+            max_start = file_dur - duration
+            offset = random.uniform(0, max_start) if max_start > 0 else 0
+            audio, _ = librosa.load(file_path, sr=target_sr, mono=True, offset=offset, duration=duration)
+        else:
+            audio, _ = librosa.load(file_path, sr=target_sr, mono=True, duration=duration)
     except Exception as e:
         print(f"[load_audio] Failed to load {file_path}: {e}")
         return np.zeros(target_len, dtype=np.float32)
 
-    # Crop to target duration
-    if len(audio) > target_len:
-        if random_crop:
-            # Random crop: pick a random starting point in the valid range
-            max_start = len(audio) - target_len
-            start = random.randint(0, max_start) if max_start > 0 else 0
-            audio = audio[start : start + target_len]
-        else:
-            # Fixed crop: always take first 4s
-            audio = audio[:target_len]
-    elif len(audio) < target_len:
-        # Pad if too short
-        audio = np.pad(audio, (0, target_len - len(audio)))
+    # Pad if too short using "reflect" to avoid spectral ringing artifacts at boundaries
+    if len(audio) < target_len:
+        audio = np.pad(audio, (0, target_len - len(audio)), mode='reflect')
+    elif len(audio) > target_len:
+        audio = audio[:target_len]
 
     # Peak normalization
     peak = np.max(np.abs(audio))
