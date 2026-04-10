@@ -633,6 +633,12 @@ def render_confidence_timeline(audio_np: np.ndarray, model_path: str, ctx):
         </div>
     ''', unsafe_allow_html=True)
 
+    return {
+        "flagged_windows_pct": spoof_pct,
+        "peak_timestamp": peak_time,
+        "peak_confidence": peak_conf
+    }
+
 # ─── Shared analysis function ────────────────────────────────
 def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=None):
     ctx = container if container is not None else st
@@ -696,18 +702,23 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
                 </div>
             """, unsafe_allow_html=True)
 
-            # LLM Forensic Report integration
-            ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis Report (AI-Generated)</div>', unsafe_allow_html=True)
+            # Confidence Timeline (Calculated first to give data to LLM)
+            with ctx:
+                timeline_stats = render_confidence_timeline(audio_np, None, ctx)
+
+            # Forensic Analysis Report
+            ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis Report</div>', unsafe_allow_html=True)
             
-            # Extract scalars for the LLM from the actual audio logic
-            # (In a real app we'd pass these from analysis_result, but we can compute them here too)
+            # Extract scalars for the LLM
             sc = extract_scalar_features(audio_np[:64000], sr=16000)
             
             llm_text = generate_llm_report(
                 verdict=verdict,
                 confidence=float(confidence_str.strip('%'))/100,
-                f0_jitter=sc[6],
-                spectral_contrast=sc[2], # using centroid as proxy or sc[2]
+                f0_jitter=sc[6],      # HNR
+                spectral_contrast=sc[2], # F1 / Spectral
+                peak_timestamp=timeline_stats.get("peak_timestamp", 0.0),
+                flagged_windows_pct=timeline_stats.get("flagged_windows_pct", 0.0),
                 voiced_ratio=voiced_ratio
             )
             
@@ -719,12 +730,9 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
                 </div>
             """, unsafe_allow_html=True)
 
-            # Confidence Timeline
-            with ctx:
-                render_confidence_timeline(audio_np, None, ctx)
-
             ctx.markdown('<div class="section-label" style="margin-top:2rem">Grad-CAM Spatial Pulse</div>', unsafe_allow_html=True)
             ctx.image(str(report_path), use_container_width=True)
+
 
             with open(report_path, "rb") as f:
                 ctx.download_button(

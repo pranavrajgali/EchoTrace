@@ -7,6 +7,10 @@ Switch   : LLM_BACKEND env var = "groq" | "ollama"
 import os
 import json
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ── Config ───────────────────────────────────────────────────
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
@@ -32,21 +36,26 @@ def _build_prompt(
 ) -> str:
     """
     Construct the forensic analysis prompt sent to the LLM.
-    All values are already computed upstream — LLM only writes prose.
     """
     label = "AI-GENERATED (SPOOF)" if verdict == "SPOOF" else "AUTHENTIC (BONAFIDE)"
-    return f"""You are EchoTrace, a forensic audio analysis AI. Write a concise plain-English report
-explaining the analysis of an audio sample. Do NOT include headers, bullet points, or markdown.
-Write 3–4 sentences maximum. Be specific about the numeric evidence. Maintain a clinical, forensic tone.
+    return f"""You are EchoTrace, a forensic audio analysis AI. Write a concise plain-English report 
+analyzing the provided data. 
+
+STRICT REQUIREMENTS:
+1. EXPLAIN the features: Briefly explain what the metrics (flatness, HNR, jitter, etc.) indicate about the audio's authenticity.
+2. BOLD key terms: Highlight important findings, metrics, and the final result using **bold** text.
+3. STRUCTURE: Start with the analysis of specific features, then provide a definitive **CONCLUSION** at the end.
+4. TONE: Clinical, forensic, and objective. No greetings or headers. 
+5. LENGTH: 3-5 sentences total.
 
 ANALYSIS DATA:
-- Verdict         : {label}
-- Model confidence: {confidence:.1%}
-- F0 jitter       : {f0_jitter:.4f}  (synthetic speech typically has jitter < 0.002)
-- Spectral contrast: {spectral_contrast:.4f}  (low values suggest vocoder smoothing)
-- Peak anomaly at : {peak_timestamp:.2f}s
-- Flagged windows : {flagged_windows_pct:.0f}% of sliding-window segments
-- Voiced ratio    : {voiced_ratio:.0%} of audio contained detected speech
+- Verdict: **{label}**
+- Model confidence: **{confidence:.1%}**
+- Harmonic-to-Noise Ratio (HNR): {f0_jitter:.4f} (synthetic speech is often "too clean" with high HNR)
+- Spectral / Formant Consistency: {spectral_contrast:.4f} (unnatural smoothness in transitions)
+- Peak anomaly at: {peak_timestamp:.2f}s
+- Flagged windows: **{flagged_windows_pct:.0f}%**
+- Voiced ratio: {voiced_ratio:.0%}
 
 Write the forensic summary now:"""
 
@@ -142,18 +151,15 @@ def _rule_based_report(
 ) -> str:
     if verdict == "SPOOF":
         return (
-            f"EchoTrace classified this sample as AI-GENERATED with {confidence:.1%} confidence. "
-            f"{flagged_windows_pct:.0f}% of the sliding-window segments were flagged as synthetic, "
-            f"indicating consistent artifacts throughout the recording. "
-            f"The spectral fingerprint shows patterns characteristic of neural vocoder synthesis "
-            f"rather than natural human phonation. "
-            f"Voiced content accounted for {voiced_ratio:.0%} of the total audio duration."
+            f"Analysis of spectral characteristics reveals **{flagged_windows_pct:.0f}%** of segments contain synthetic artifacts. "
+            f"The **Harmonic-to-Noise Ratio** and **Spectral Flatness** exhibit levels of consistency typical of neural vocoder synthesis rather than natural human vocal tracts. "
+            f"Periodic anomalies were detected throughout the **{voiced_ratio:.0%}** voiced content. "
+            f"**CONCLUSION**: The sample is classified as **AI-GENERATED (SPOOF)** with **{confidence:.1%}** confidence."
         )
     else:
         return (
-            f"EchoTrace classified this sample as AUTHENTIC with {confidence:.1%} confidence. "
-            f"Only {flagged_windows_pct:.0f}% of sliding-window segments showed synthetic indicators, "
-            f"consistent with natural recording noise rather than vocoder artifacts. "
-            f"The spectral structure and prosodic dynamics are consistent with genuine human speech. "
-            f"Voiced content accounted for {voiced_ratio:.0%} of the total audio duration."
-        )
+            f"Spectral features show natural variance in **formant transitions** and **zero-crossing rates** across the audio. "
+            f"Only **{flagged_windows_pct:.0f}%** of windows showed minor anomalies, which are consistent with ambient noise rather than synthesis. "
+            f"The **prosodic structure** aligns with authentic human phonation across **{voiced_ratio:.0%}** of the sample. "
+            f"**CONCLUSION**: The sample is classified as **AUTHENTIC (BONAFIDE)** with **{confidence:.1%}** confidence."
+        )

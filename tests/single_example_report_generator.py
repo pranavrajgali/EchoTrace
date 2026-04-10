@@ -52,14 +52,14 @@ def generate_forensic_report(audio_path):
     
     if file_ext not in ALLOWED_EXTENSIONS:
         error_msg = f"Unsupported File Format ({file_ext}). Please use: {', '.join(ALLOWED_EXTENSIONS).upper()}"
-        print(f"\n🛑 ERROR: {error_msg}")
+        print(f"\n[ERROR] {error_msg}")
         return {"result": "ERROR", "confidence": "0%", "error": error_msg}, None
 
     if not os.path.exists(audio_path):
-        print(f"❌ Error: File not found at {audio_path}")
+        print(f"[X] Error: File not found at {audio_path}")
         return
 
-    print(f"\n🔍 Analyzing: {os.path.basename(audio_path)}")
+    print(f"\n[*] Analyzing: {os.path.basename(audio_path)}")
     
     # Load audio with librosa (for visualization)
     y, sr = librosa.load(audio_path, sr=16000)
@@ -195,31 +195,31 @@ def generate_forensic_report(audio_path):
     report_name = f"Report_{os.path.basename(audio_path)}.png"
     save_path = os.path.join(output_dir, report_name)
     plt.savefig(save_path, facecolor=fig.get_facecolor(), dpi=300, bbox_inches='tight')
-    print(f"\n✅ Report saved to: {save_path}\n")
+    print(f"\n[OK] Report saved to: {save_path}\n")
     plt.close(fig)
     
     return result, save_path
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("  🎯 EchoTrace Forensic Report Generator")
+    print("  [*] EchoTrace Forensic Report Generator")
     print("="*60)
     print(f"  Supported formats: {', '.join(ALLOWED_EXTENSIONS)}")
     print("="*60 + "\n")
     
-    audio_to_test = input("📁 Enter the path to the audio file for analysis: ").strip()
+    audio_to_test = input("[>] Enter the path to the audio file for analysis: ").strip()
     
     if not audio_to_test:
-        print("❌ No file path provided. Exiting.")
+        print("[X] No file path provided. Exiting.")
         sys.exit(1)
     
     result, report_path = generate_forensic_report(audio_to_test)
     
     if result and 'error' not in result:
         print("━" * 60)
-        print(f"🎯 FINAL VERDICT: {result['result']}")
-        print(f"📊 Confidence: {result['confidence']}")
-        print(f"📄 Report: {report_path}")
+        print(f"[*] FINAL VERDICT: {result['result']}")
+        print(f"[+] Confidence: {result['confidence']}")
+        print(f"[+] Report: {report_path}")
         print("━" * 60 + "\n")
     else:
-        print(f"❌ Analysis failed: {result.get('error', 'Unknown error')}\n")
+        print(f"[X] Analysis failed: {result.get('error', 'Unknown error')}\n")

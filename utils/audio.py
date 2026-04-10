@@ -1,19 +1,11 @@
 """
 utils/audio.py — VAD + audio validation for EchoTrace
-Uses webrtcvad for voice activity detection.
+Pure-Python voice activity detection using librosa RMS energy + ZCR.
+No external C dependencies required.
 """
 import io
-import struct
 import numpy as np
 import librosa
-import soundfile as sf
-
-try:
-    import webrtcvad
-    VAD_AVAILABLE = True
-except ImportError:
-    VAD_AVAILABLE = False
-    print("[audio] webrtcvad not installed — VAD disabled, install with: pip install webrtcvad")
 
 
 class AudioValidationError(Exception):
@@ -42,7 +34,7 @@ def validate_and_load(file_bytes: bytes, min_duration_sec: float = 2.0) -> tuple
     if sr < 16000:
         raise AudioValidationError(
             f"Sample rate too low ({sr} Hz). "
-            "EchoTrace requires ≥ 16 kHz audio — upsampling corrupts the upper "
+            "EchoTrace requires >= 16 kHz audio -- upsampling corrupts the upper "
             "half of the spectrogram and produces unreliable results. "
             "Please provide audio recorded at 16 kHz or higher."
         )
@@ -51,6 +43,20 @@ def validate_and_load(file_bytes: bytes, min_duration_sec: float = 2.0) -> tuple
     if sr != 16000:
         audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
     sr = 16000
+
+    # ── Effective bandwidth check ──────────────────────────────
+    # Catches audio that was upsampled from a lower rate (e.g. 8kHz→16kHz).
+    # The file header says 16kHz, but the actual energy only reaches ~4kHz.
+    # This produces an empty upper spectrogram → unreliable model output.
+    effective_bw = _estimate_bandwidth(audio, sr)
+    if effective_bw < 5000:
+        raise AudioValidationError(
+            f"Audio bandwidth too low (~{effective_bw:.0f} Hz effective). "
+            "This appears to be low-rate audio (e.g. 8 kHz telephony) that was "
+            "upsampled to a higher container rate. EchoTrace needs wideband "
+            "(>= 8 kHz bandwidth) audio for reliable forensic analysis. "
+            "Please provide a recording captured at 16 kHz or higher."
+        )
 
     # ── Duration check ────────────────────────────────────────
     duration = len(audio) / sr
@@ -72,51 +78,84 @@ def validate_and_load(file_bytes: bytes, min_duration_sec: float = 2.0) -> tuple
     # ── VAD ───────────────────────────────────────────────────
     voiced_ratio = _run_vad(audio, sr)
 
-    if voiced_ratio == 0.0:
+    if voiced_ratio < 0.05:
         raise AudioValidationError(
             "No speech detected in the audio. "
-            "Please ensure the recording contains a voice and is not muted."
+            "EchoTrace requires voice content for forensic analysis. "
+            "Please ensure the recording contains actual speech and is not "
+            "just silence, music, or background noise."
         )
 
     return audio, voiced_ratio
 
 
-def _run_vad(audio: np.ndarray, sr: int = 16000, aggressiveness: int = 2) -> float:
+def _estimate_bandwidth(audio: np.ndarray, sr: int = 16000) -> float:
     """
-    Run webrtcvad on 20ms frames and return the fraction of voiced frames.
-    Falls back to 1.0 if webrtcvad is not available (assume voiced).
+    Estimate the effective bandwidth of the audio using spectral rolloff.
+
+    Returns the frequency (Hz) below which 95% of the spectral energy lies.
+    For genuine 16kHz audio, this should be well above 5kHz.
+    For upsampled 8kHz audio, this will be around 3.5–4kHz.
     """
-    if not VAD_AVAILABLE:
-        return 1.0
+    rolloff = librosa.feature.spectral_rolloff(
+        y=audio, sr=sr, roll_percent=0.95
+    )[0]
 
-    vad = webrtcvad.Vad(aggressiveness)
+    # Use the 75th percentile of rolloff values to be robust against
+    # brief silent segments that would drag down the average
+    if len(rolloff) == 0:
+        return 0.0
+    return float(np.percentile(rolloff, 75))
 
-    frame_ms   = 20           # webrtcvad supports 10, 20, 30 ms
-    frame_len  = int(sr * frame_ms / 1000)   # samples per frame
-    pcm_bytes  = _to_pcm16(audio)
 
-    total_frames  = 0
-    voiced_frames = 0
+def _run_vad(audio: np.ndarray, sr: int = 16000) -> float:
+    """
+    Pure-Python voice activity detection using RMS energy + zero-crossing rate.
 
-    for start in range(0, len(pcm_bytes) - frame_len * 2, frame_len * 2):
-        frame = pcm_bytes[start : start + frame_len * 2]
-        if len(frame) < frame_len * 2:
-            break
-        try:
-            is_speech = vad.is_speech(frame, sr)
-        except Exception:
-            is_speech = False
-        total_frames  += 1
-        voiced_frames += int(is_speech)
+    Strategy:
+        1. Compute short-time RMS energy per frame (20ms frames, 10ms hop).
+        2. Derive a dynamic threshold from the energy distribution.
+        3. A frame is 'voiced' if its energy exceeds the threshold AND
+           its zero-crossing rate is within a speech-like range
+           (speech has moderate ZCR; noise/silence has very high or very low ZCR).
 
-    if total_frames == 0:
+    Returns:
+        float: fraction of frames classified as voiced (0.0 – 1.0)
+    """
+    frame_length = int(sr * 0.025)   # 25ms frames
+    hop_length   = int(sr * 0.010)   # 10ms hop
+
+    # ── RMS energy per frame ──
+    rms = librosa.feature.rms(
+        y=audio, frame_length=frame_length, hop_length=hop_length
+    )[0]
+
+    # ── Zero-crossing rate per frame ──
+    zcr = librosa.feature.zero_crossing_rate(
+        y=audio, frame_length=frame_length, hop_length=hop_length
+    )[0]
+
+    if len(rms) == 0:
         return 0.0
 
-    return voiced_frames / total_frames
+    # ── Dynamic energy threshold ──
+    # Use the 15th percentile as floor estimate + scale factor
+    energy_floor = np.percentile(rms, 15)
+    energy_threshold = max(energy_floor * 4.0, np.mean(rms) * 0.35)
 
+    # ── ZCR bounds for speech ──
+    # Human speech typically has ZCR between 0.02 and 0.25
+    # Pure noise tends to have very high ZCR; silence has near-zero
+    zcr_low  = 0.01
+    zcr_high = 0.30
 
-def _to_pcm16(audio: np.ndarray) -> bytes:
-    """Convert float32 [-1, 1] numpy array to raw int16 PCM bytes."""
-    pcm = np.clip(audio, -1.0, 1.0)
-    pcm_int16 = (pcm * 32767).astype(np.int16)
-    return struct.pack(f"{len(pcm_int16)}h", *pcm_int16)
+    voiced_count = 0
+    total_frames = len(rms)
+
+    for i in range(total_frames):
+        energy_ok = rms[i] > energy_threshold
+        zcr_ok    = zcr_low <= zcr[i] <= zcr_high
+        if energy_ok and zcr_ok:
+            voiced_count += 1
+
+    return voiced_count / total_frames
