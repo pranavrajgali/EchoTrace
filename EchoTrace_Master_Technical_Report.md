@@ -37,10 +37,30 @@ We are training on a heavy-duty cluster:
 - **Backend:** Distributed Data Parallel (DDP) using the NCCL backend.
 - **Speed:** ~4 seconds per batch (128 samples per batch).
 - **Optimization:** Automatic Mixed Precision (AMP/float16) for 2x faster math.
+- **Worker Configuration:** 24 parallel CPU workers (6 per GPU) using `persistent_workers=True` to eliminate data loading overhead between epochs.
 
 ---
 
-## 🛠️ 4. Technical Hurdles We Overcame
+## 🛰️ 4. The Engineering Pipeline (Deep Dive)
+Judges often ask "how" the data actually moves. Here is the EchoTrace data flow:
+
+### A. The Training Pipeline (DDP Strategy)
+1.  **Distributed Sampling**: The 93,100 samples are partitioned by a `DistributedSampler`. Each GPU only sees its 1/4th of the data per epoch, ensuring the model generalizes across the whole set.
+2.  **Hybrid Feature Fusion**: 
+    *   The **3-channel image** passes through the ResNet-50 backbone to produce a 2048-dimensional feature vector.
+    *   The **8 physics scalars** pass through a dedicated "sidecar" MLP.
+    *   These two vectors are **concatenated** at the neck of the model before hitting the final forensic classifier head. This ensures the model makes a decision based on both texture (how it sounds) and physics (how it was made).
+3.  **Stability Controls**: We used `torch.cuda.amp` (Mixed Precision) to keep memory usage low while using `GradScaler` to prevent "gradient underflow," which often crashes deep learning models at this scale.
+
+### B. The Inference Pipeline (Real-Time Demo)
+When you record audio in the app today:
+1.  **Sliding Window**: The system doesn't just guess once. It moves a **2-second sliding window** across the recording with a 500ms overlap. 
+2.  **Ensemble Verdict**: The final verdict is the mean probability across all windows, providing a much more robust detection than a single "snapshot."
+3.  **Explainability (Grad-CAM)**: In the final step, the system back-propagates the "Fake" neuron's signal to the input spectrogram to see which forensic pixels were the most suspicious.
+
+---
+
+## 🛠️ 5. Technical Hurdles We Overcame
 (Judges love to hear how you solved problems!)
 
 - **The DDP Evaluation Deadlock:** We fixed a critical bug where the cluster would freeze during the validation phase. We resolved this by forcing a local evaluation on Rank 0 and implementing a `dist.barrier()` to synchronize the GPUs.
