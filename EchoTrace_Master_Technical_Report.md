@@ -19,14 +19,23 @@ As of **Epoch 3 (Final)**, the model has achieved industry-leading performance:
 Unlike standard black-box AI, EchoTrace uses a hybrid approach:
 
 1.  **Stream A: Spectral Texture (Vision)**
-    - Uses a 3-channel input combining **Chroma CQT**, **Mel-Spectrogram**, and **STFT**.
-    - Captured by a **ResNet-50** backbone.
-    - This "sees" the robotic artifacts and frequency discontinuities left behind by AI vocoders (like ElevenLabs or RVM).
+    - **The 3-Channel Input:** Instead of a simple grayscale spectrogram, we use a 3-channel "Forensic Image" (224x224x3):
+        - **Channel 1 (Chroma CQT):** Captures harmonic relationships and pitch structure. AI vocoders often struggle with consistent harmonic phase.
+        - **Channel 2 (Mel-Spectrogram):** Captures energy and timbre. This identifies the "robotic" metallic sheen often found in synthetic audio.
+        - **Channel 3 (STFT Magnitude):** Captures fine-grained time-frequency details and transients.
+    - **Backbone:** Captured by a **ResNet-50** backbone (ImageNet-pretrained).
 
 2.  **Stream B: Biometric Physics (Scalars)**
-    - Extracts 8 physical features: **F0 Jitter, Spectral Flatness, LPC Formants, and Spectral Centroids**.
-    - These represent the *physical resonance* of a human throat and mouth.
-    - Synthetic voices often have "mathematically perfect" pitch that makes them feel flat—this stream catches that lack of biology.
+    - We extract **8 Physical Features** that are extremely difficult for AI to mimic:
+        - **F0 Jitter:** Measures the micro-vibrations in a human voice. AI is often too "perfectly steady."
+        - **LPC Formants:** Models the physical shape of the human vocal tract.
+        - **Spectral Flatness:** Identifies unnatural gaps in the frequency spectrum.
+        - **Spectral Centroid:** Tracks the "brightness" versus "muffleness" of the voice.
+        - **Pitch Shimmer:** Capture amplitude instability (biological imperfection).
+        - **Zero Crossing Rate:** Detects high-frequency noise artifacts.
+        - **MFCC Mean:** Captures the general spectral envelope.
+        - **RMSE Energy:** Tracks the consistency of loudness over time.
+    - These represent the *physical resonance* of a human throat and mouth. AI voices often have "mathematically perfect" signals that feel flat—this stream catches that lack of biology.
 
 ---
 
