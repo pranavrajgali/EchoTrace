@@ -140,7 +140,19 @@ def generate_html_report(
     flagged_pct     = int(min(99, max(1, conf_pct * 0.85)))
     peak_anomaly    = 2.14
 
-    # ── Scalar cards HTML ──────────────────────────────────────
+    # Pre-compute channel images once before any loops
+    import matplotlib.pyplot as plt
+    cmaps = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
+    channel_imgs_b64 = []
+    for ch_idx in range(3):
+        ch_data = feature_image[:, :, ch_idx] / 255.0
+        colored = (cmaps[ch_idx](ch_data)[:, :, :3] * 255).astype(np.uint8)
+        img_pil = Image.fromarray(colored)
+        buf = io.BytesIO()
+        img_pil.save(buf, format="PNG")
+        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+        channel_imgs_b64.append(b64_str)
+
     scalar_cards_html = ""
     for i, card in enumerate(scalar_cards):
         v          = float(scalars[i])
@@ -149,22 +161,6 @@ def generate_html_report(
         val_cls    = "flag" if suspicious else "ok"
         status_txt  = _status_text(card, i, v, suspicious)
         status_icon = "!" if suspicious else "OK"
-
-        # Apply colormaps to the 3 channels for base64 inclusion
-        import matplotlib.pyplot as plt
-        cmaps = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
-        channel_imgs_b64 = []
-        for ch_idx in range(3):
-            # Extract channel and normalize
-            ch_data = feature_image[:, :, ch_idx] / 255.0
-            # Apply color
-            colored = (cmaps[ch_idx](ch_data)[:, :, :3] * 255).astype(np.uint8)
-            # To PIL and then Base64
-            img_pil = Image.fromarray(colored)
-            buf = io.BytesIO()
-            img_pil.save(buf, format="PNG")
-            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
-            channel_imgs_b64.append(b64_str)
 
         scalar_cards_html += f"""
         <div class="scalar-card {card_cls}">
@@ -229,7 +225,8 @@ def generate_html_report(
   :root{{
     --bg:#09090A;--surface:#111113;--surface2:#18181B;
     --border:#222226;--border2:#2E2E34;
-    --red:{verdict_color};--red-dim:rgba(232,68,58,0.12);
+    --red:#E8443A;--red-dim:rgba(232,68,58,0.12);
+    --accent:{verdict_color};
     --green:#3DBA7A;--green-dim:rgba(61,186,122,0.12);
     --text-primary:#F0EDE8;--text-secondary:#8A8A90;--text-dim:#3E3E44;
     --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
@@ -247,9 +244,9 @@ def generate_html_report(
   .header-right{{text-align:right}}
   .meta-row{{font-family:var(--mono);font-size:11px;color:var(--text-secondary);margin-bottom:4px}}
   .meta-row strong{{color:var(--text-primary);font-weight:500}}
-  .verdict-banner{{background:var(--surface);border:1px solid var(--border2);border-left:3px solid var(--red);padding:20px 24px;margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;gap:24px}}
+  .verdict-banner{{background:var(--surface);border:1px solid var(--border2);border-left:3px solid var(--accent);padding:20px 24px;margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;gap:24px}}
   .verdict-label{{font-family:var(--mono);font-size:10px;letter-spacing:0.18em;color:var(--text-secondary);text-transform:uppercase;margin-bottom:6px}}
-  .verdict-value{{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--red);letter-spacing:0.08em}}
+  .verdict-value{{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--accent);letter-spacing:0.08em}}
   .verdict-stats{{display:flex;gap:32px}}
   .stat{{text-align:center}}
   .stat-val{{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--text-primary)}}
@@ -377,13 +374,14 @@ def generate_html_report(
     <div class="shap-body">
       <div class="shap-endpoints">
         <span class="shap-ep">Baseline (avg) &nbsp;<span>0.50</span></span>
-        <span class="shap-ep">Model output &nbsp;<span style="color:var(--red)">{raw_prob:.3f}</span></span>
+        <span class="shap-ep">Model output &nbsp;<span style="color:var(--accent)">{raw_prob:.3f}</span></span>
       </div>
       <div class="shap-rows">{shap_rows_html}</div>
       <div class="shap-total-row">
         <div class="shap-total-label">Final output</div>
         <div class="shap-output-bar">
           <div class="shap-output-fill" style="width:{out_fill_pct:.1f}%;background:{out_fill_color};"></div>
+          <div style="position:absolute;{'right:4px' if is_spoof else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'IBM Plex Mono',monospace;font-size:7px;color:#3DBA7A;opacity:0.6;letter-spacing:0.08em;">{'SPOOF \u2192' if is_spoof else '\u2190 BONAFIDE'}</div>
         </div>
         <div class="shap-output-val" style="color:{out_fill_color}">{out_val_disp}</div>
       </div>
@@ -452,41 +450,34 @@ def generate_forensic_report(audio_path: str, original_filename: str = None, pre
     # ── Parallel LLM Generation ─────────────────────────────────
     from utils.llm_report import generate_llm_report
     from utils.llm_cards import generate_card_analysis, _fallback
-    import concurrent.futures
 
-    print("   • Generating LLM forensics (parallel)...")
+    print("   • Generating LLM forensics cards...")
+    try:
+        scalar_cards, channel_cards = generate_card_analysis(
+            verdict=verdict,
+            confidence=conf_val,
+            scalars=scalars
+        )
+    except Exception as e:
+        print(f"   [!] Cards failed: {e}")
+        scalar_cards, channel_cards = _fallback()
+
+    print("   • Generating narrative report (dual-layered)...")
     flagged_pct = min(99, max(1, conf_val * 85))
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Task 1: Narrative Summary — pass full scalar vector for nuanced per-feature analysis
-        peak_ts = precomputed.get("peak_timestamp", 0.0) if precomputed else 2.14
-        f_summary = executor.submit(
-            generate_llm_report,
+    peak_ts = precomputed.get("peak_timestamp", 0.0) if precomputed else 2.14
+    
+    try:
+        llm_text = generate_llm_report(
             verdict=verdict,
             confidence=conf_val,
             scalars=scalars,
             flagged_windows_pct=flagged_pct,
             peak_timestamp=peak_ts,
+            channels=channel_cards
         )
-        # Task 2: Dynamic Card Analysis
-        f_cards = executor.submit(
-            generate_card_analysis,
-            verdict=verdict,
-            confidence=conf_val,
-            scalars=scalars
-        )
-
-        try:
-            llm_text = f_summary.result(timeout=25)
-        except Exception as e:
-            print(f"   [!] Summary failed: {e}")
-            llm_text = f"Classified as **{verdict}** with **{raw_prob:.1%}** confidence. Forensic features indicate synthetic artifacts."
-
-        try:
-            scalar_cards, channel_cards = f_cards.result(timeout=25)
-        except Exception as e:
-            print(f"   [!] Cards failed: {e}")
-            scalar_cards, channel_cards = _fallback()
+    except Exception as e:
+        print(f"   [!] Summary failed: {e}")
+        llm_text = f"Classified as **{verdict}** with **{raw_prob:.1%}** confidence. Forensic features indicate synthetic artifacts."
 
     shap_data  = _compute_shap_approx(scalars)
     report_id  = f"ET-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"

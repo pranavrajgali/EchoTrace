@@ -48,18 +48,18 @@ LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 
 BATCH_PER_GPU  = 32
 
-# ── TRAINING CONFIG (edit these values for different runs) ──
-NUM_EPOCHS         = 3
+# ── TRAINING CONFIG ──────────────────────────────────────────
+NUM_EPOCHS         = 5
 AUGMENT_PROB       = 0.2
 
 # Dataset subset sizes
-ASV_SUBSET         = 10000
-WAVEFAKE_SUBSET    = 50000
-ITW_SUBSET         = 12000
-LIBRISPEECH_SUBSET = 28000
+ASV_SUBSET         = None     # ~25,380 samples
+WAVEFAKE_SUBSET    = None     # ~117,100 samples
+ITW_SUBSET         = None     # ~38,000 samples
+LIBRISPEECH_SUBSET = 60000    # capped — all real
 
-# Validation set size (from InTheWild val split)
-VAL_SIZE           = 3000
+# Validation set size (None = full split)
+VAL_SIZE           = None
 
 
 # ── Logging ───────────────────────────────────────────────────
@@ -99,42 +99,26 @@ def cleanup():
 
 # ── DataLoader ────────────────────────────────────────────────
 def get_loader(rank, world_size, logger):
-    logger.info("Loading ASVspoof dataset ...")
+    logger.info("Loading datasets (Full Budget) ...")
     asv = ASVDataset(
-        protocol_file=ASV_PROTOCOL,
-        data_dir=ASV_DIR,
-        subset_size=ASV_SUBSET,
-        augment=True,
-        augment_prob=AUGMENT_PROB,
+        protocol_file=ASV_PROTOCOL, data_dir=ASV_DIR,
+        subset_size=ASV_SUBSET, augment=True, augment_prob=AUGMENT_PROB
     )
-
-    logger.info("Loading WaveFake dataset ...")
     wf = WaveFakeDataset(
-        data_dir=WAVEFAKE_DIR,
-        subset_size=WAVEFAKE_SUBSET,
-        augment=True,
-        augment_prob=AUGMENT_PROB,
+        data_dir=WAVEFAKE_DIR, subset_size=WAVEFAKE_SUBSET,
+        augment=True, augment_prob=AUGMENT_PROB
     )
-
-    logger.info("Loading InTheWild dataset ...")
     itw = InTheWildDataset(
-        data_dir=ITW_DIR,
-        subset="train",
-        subset_size=ITW_SUBSET,
-        augment=True,
-        augment_prob=AUGMENT_PROB,
+        data_dir=ITW_DIR, subset="train", subset_size=ITW_SUBSET,
+        augment=True, augment_prob=AUGMENT_PROB
     )
-
-    logger.info("Loading LibriSpeech dataset ...")
     librispeech = LibriSpeechDataset(
-        data_dir=LIBRISPEECH_DIR,
-        subset_size=LIBRISPEECH_SUBSET,
-        augment=True,
-        augment_prob=0.5,
+        data_dir=LIBRISPEECH_DIR, subset_size=LIBRISPEECH_SUBSET,
+        augment=True, augment_prob=0.5
     )
 
     dataset = build_combined_dataset(asv, wf, itw, librispeech)
-    logger.info(f"Total training samples: {len(dataset)}")
+    logger.info(f"Total training samples: {len(dataset)} (Natural Ratio)")
 
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
@@ -143,27 +127,23 @@ def get_loader(rank, world_size, logger):
         dataset,
         batch_size=BATCH_PER_GPU,
         sampler=sampler,
-        num_workers=6,           # Increased to 6 per GPU for 100k run
+        num_workers=6,
         pin_memory=True,
         drop_last=True,
-        persistent_workers=True, # don't restart workers between epochs
-        prefetch_factor=2,       # each worker prefetches 2 batches ahead
+        persistent_workers=True,
+        prefetch_factor=2,
     )
     return loader, sampler
 
 
 # ── Validation DataLoader ─────────────────────────────────────
 def get_val_loader(rank, world_size, logger):
-    """
-    Create validation loader using InTheWild 'val' split.
-    No augmentation on validation data.
-    """
-    logger.info("Loading InTheWild validation dataset ...")
+    logger.info("Loading InTheWild validation dataset (Full) ...")
     val_dataset = InTheWildDataset(
         data_dir=ITW_DIR,
         subset="val",
-        subset_size=VAL_SIZE,
-        augment=False,  # no augmentation during validation
+        subset_size=VAL_SIZE, # Now loads full split
+        augment=False,
         augment_prob=0.0,
     )
     
@@ -307,6 +287,16 @@ def train(rank, world_size):
         logger.info(f"  Epochs         : {NUM_EPOCHS}")
         logger.info(f"  Aug Prob       : {AUGMENT_PROB}")
         logger.info(f"  Scheduler      : CosineAnnealingLR (T_max={NUM_EPOCHS})")
+        logger.info("=" * 60)
+        logger.info("  DATASET SUMMARY")
+        logger.info(f"  ASVspoof 2019  : subset={ASV_SUBSET or 'FULL'}")
+        logger.info(f"  WaveFake       : subset={WAVEFAKE_SUBSET or 'FULL'}")
+        logger.info(f"  InTheWild      : subset={ITW_SUBSET or 'FULL'}")
+        logger.info(f"  LibriSpeech    : subset={LIBRISPEECH_SUBSET}")
+        logger.info(f"  Val split      : {VAL_SIZE or 'FULL'}")
+        logger.info(f"  Total training : {len(loader.dataset)} samples")
+        logger.info(f"  Batches/epoch  : {len(loader)}")
+        logger.info(f"  Est. time/epoch: ~{len(loader) * 4 / 3600:.1f} hrs")
         logger.info("=" * 60)
 
     best_loss = float("inf")

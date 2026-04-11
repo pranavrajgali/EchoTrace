@@ -427,7 +427,7 @@ st.markdown("""
     }
 
     .verdict-result-fake { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #E8443A !important; line-height: 1; margin-bottom: 0.75rem; }
-    .verdict-result-real { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #52D98A !important; line-height: 1; margin-bottom: 0.75rem; }
+    .verdict-result-real { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #3DBA7A !important; line-height: 1; margin-bottom: 0.75rem; }
 
     .verdict-confidence { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: #5A5A5E; border-top: 1px solid #1E1E20; padding-top: 0.75rem; margin-top: 0.75rem; }
     .verdict-confidence span { color: #C8C5BF !important; font-weight: 700; }
@@ -550,7 +550,7 @@ def render_confidence_timeline(audio_np, existing_points=None, container=None):
     labels = [p[2] for p in points]
 
     # Color each point
-    colors = ["#E8443A" if l == "SPOOF" else "#52D98A" for l in labels]
+    colors = ["#E8443A" if l == "SPOOF" else "#3DBA7A" for l in labels]
 
     fig = go.Figure()
 
@@ -657,7 +657,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
             <div style="background:#111113;border:1px solid #1E1E20;border-radius:4px;padding:1rem 1.25rem 0.5rem;margin-bottom:0.75rem;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
                     <div>
-                        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#52D98A;font-weight:700;letter-spacing:0.05em;margin-bottom:0.25rem;">WHICH VOICE PROPERTY GAVE IT AWAY?</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#3DBA7A;font-weight:700;letter-spacing:0.05em;margin-bottom:0.25rem;">WHICH VOICE PROPERTY GAVE IT AWAY?</div>
                         <div style="font-family:'DM Sans',sans-serif;font-size:0.72rem;color:#5A5A5E;max-width:420px;line-height:1.5;">SHAP values show each scalar feature's individual contribution to the verdict. Red bars push toward SPOOF. Green bars push toward BONAFIDE.</div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;margin-left:1rem;">
@@ -674,7 +674,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
 
         # Baseline / model output endpoints row
         conf_val = raw_prob if is_fake else (1.0 - raw_prob)
-        endpoint_color = "#E8443A" if is_fake else "#52D98A"
+        endpoint_color = "#E8443A" if is_fake else "#3DBA7A"
         container.markdown(f"""
             <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;padding:0.5rem 0;border-bottom:1px solid #1E1E20;margin-bottom:4px;">
                 <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:right;">Baseline (avg)</div>
@@ -689,7 +689,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
             is_pos = d['val'] >= 0
             pct = (abs(d['val']) / max_abs) * 46
             color = "rgba(232,68,58,0.75)" if is_pos else "rgba(61,186,122,0.65)"
-            val_color = "#E8443A" if is_pos else "#52D98A"
+            val_color = "#E8443A" if is_pos else "#3DBA7A"
             container.markdown(f"""
                 <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;margin-bottom:6px;">
                     <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8A8A90;text-align:right;">{d['feat']}</div>
@@ -704,7 +704,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
         # Final Output row
         out_fill_pct = ((raw_prob - 0.5) / 0.5) * 46 if is_fake else ((0.5 - raw_prob) / 0.5) * 46
         out_fill_pct = max(0, min(46, out_fill_pct))
-        out_color = "#E8443A" if is_fake else "#52D98A"
+        out_color = "#E8443A" if is_fake else "#3DBA7A"
         out_fill_bg = "rgba(232,68,58,0.75)" if is_fake else "rgba(61,186,122,0.65)"
         out_val = f"{raw_prob:.3f}" if is_fake else f"{1-raw_prob:.3f}"
 
@@ -714,6 +714,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
                 <div style="position:relative;height:24px;background:#111113;border-radius:2px;overflow:hidden;">
                     <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1E1E20;z-index:1;"></div>
                     <div style="position:absolute;{'left' if is_fake else 'right'}:50%;top:4px;bottom:4px;width:{out_fill_pct:.1f}%;background:{out_fill_bg};border-radius:1px;"></div>
+                    <div style="position:absolute;{'right:4px' if is_fake else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'Space Mono',monospace;font-size:7px;color:#3DBA7A;opacity:0.6;letter-spacing:0.08em;white-space:nowrap;">{'← BONAFIDE' if is_fake else 'SPOOF →'}</div>
                 </div>
                 <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:{out_color};font-weight:700;text-align:right;">{out_val}</div>
             </div>
@@ -799,7 +800,7 @@ def render_forensic_dashboard(res, container):
             with ch_cols[i]:
                 st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
                     {ch_meta[i][0]} <span style="float:right;color:#1E1E20;">{ch_meta[i][2]}</span><br>
-                    <span style="color:#52D98A;font-size:0.65rem;">{ch_meta[i][1]}</span>
+                    <span style="color:#3DBA7A;font-size:0.65rem;">{ch_meta[i][1]}</span>
                 </div>""", unsafe_allow_html=True)
                 c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
                 st.image(c_img, use_container_width=True)
@@ -814,8 +815,8 @@ def render_forensic_dashboard(res, container):
             name  = SCALAR_NAMES[i]
             susp  = _is_suspicious(i, val)
             status_txt = _status_text(res["scalar_cards"][i], i, val, susp)
-            color  = "#E8443A" if susp else "#52D98A"
-            bg     = "rgba(232,68,58,0.04)" if susp else "rgba(82,217,138,0.04)"
+            color  = "#E8443A" if susp else "#3DBA7A"
+            bg     = "rgba(232,68,58,0.04)" if susp else "rgba(61,186,122,0.04)"
             border = "rgba(232,68,58,0.4)"  if susp else "#1E1E20"
             sc_cols[i % 4].markdown(f"""
                 <div style="background:{bg};border:1px solid {border};border-radius:4px;padding:0.8rem;margin-bottom:0.8rem;min-height:100px;">
@@ -880,7 +881,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
         # 1. Timeline Inference
         status.markdown(
             "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[1/3] Running Neural Timeline Analysis…</p>",
+            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[1/3] Running Neural Timeline Analysis…</p>",
             unsafe_allow_html=True,
         )
         timeline_points, timeline_stats = render_confidence_timeline(audio_np, existing_points=None, container=None)
@@ -888,7 +889,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
         # 2. Global Feature Extraction
         status.markdown(
             "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[2/3] Extracting 8-Dim Forensic Vector…</p>",
+            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[2/3] Extracting 8-Dim Forensic Vector…</p>",
             unsafe_allow_html=True,
         )
         sc = extract_scalar_features(audio_np[:64000], sr=16000)
@@ -898,7 +899,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
         # 3. Main Forensic Report (Parallel LLM Consultation)
         status.markdown(
             "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[3/3] Consulting LLM & Generating Artifacts…</p>",
+            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[3/3] Consulting LLM & Generating Artifacts…</p>",
             unsafe_allow_html=True,
         )
         # We run inference once here to get results for the report generator
@@ -912,7 +913,8 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             "audio_np": audio_np[:64000],
             "feature_image": feat_img,
             "scalars": sc,
-            "analysis_result": analysis_result
+            "analysis_result": analysis_result,
+            "peak_timestamp": timeline_stats.get("peak_timestamp", 0.0) if timeline_stats else 0.0,
         }
 
         analysis_result, report_path, sc_cards, ch_cards, shap_data = generate_forensic_report(
@@ -937,11 +939,10 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             llm_text = generate_llm_report(
                 verdict=verdict,
                 confidence=conf_val,
-                f0_jitter=float(sc[6]),
-                spectral_contrast=float(sc[2]),
-                peak_timestamp=timeline_stats.get("peak_timestamp", 0.0),
+                scalars=sc,
+                peak_timestamp=timeline_stats.get("peak_timestamp", 0.0) if timeline_stats else 0.0,
                 flagged_windows_pct=flagged_pct,
-                voiced_ratio=float(sc[5]),
+                channels=ch_cards,
             )
 
             # Store in session state for persistence
