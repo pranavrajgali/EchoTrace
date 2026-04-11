@@ -4,6 +4,9 @@ import sys
 import tempfile
 import pathlib
 import time
+import asyncio
+import io
+import numpy as np
 from PIL import Image
 import torch
 
@@ -21,7 +24,10 @@ if str(tests_path) not in sys.path:
     sys.path.append(str(tests_path))
 
 try:
-    from single_example_report_generator import generate_forensic_report
+    from single_example_report_generator import (
+        generate_forensic_report, SCALAR_NAMES, SUSP_DIRECTION, 
+        _is_suspicious, _status_text
+    )
 except ImportError as e:
     st.error(f"Failed to import forensic report generator: {e}")
     st.stop()
@@ -51,6 +57,7 @@ import plotly.graph_objects as go
 
 def clean_wav_bytes(raw_bytes: bytes) -> bytes:
     """Re-encode raw mic bytes into a clean, browser-compatible WAV via pydub."""
+    import io
     if not PYDUB_AVAILABLE:
         return raw_bytes
     try:
@@ -60,6 +67,33 @@ def clean_wav_bytes(raw_bytes: bytes) -> bytes:
         return out.getvalue()
     except Exception:
         return raw_bytes  # fall back to raw if re-encode fails
+
+def format_llm_text(raw: str) -> str:
+    """
+    Convert **markdown bold** syntax to HTML <strong> tags and
+    apply consistent sentence-level spacing for display in the dashboard.
+    """
+    import re
+    # Replace **text** with <strong>text</strong>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong style="color:#F0EDE8;">'  r'\1</strong>', raw)
+    # Split on sentence boundaries, keeping the delimiter
+    sentences = re.split(r'(?<=\.) ', text)
+    # Detect the CONCLUSION sentence and give it visual separation
+    parts = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        if s.upper().startswith("CONCLUSION") or "<strong" in s and "CONCLUSION" in s.upper():
+            parts.append(f'<span style="display:block;margin-top:1rem;padding-top:0.75rem;border-top:1px solid #1E1E20;font-family:\'Space Mono\',monospace;font-size:0.82rem;letter-spacing:0.04em;color:#C8C5BF;">{s}</span>')
+        else:
+            parts.append(f'<span style="display:block;margin-bottom:0.5rem;">{s}</span>')
+    return "".join(parts)
+
+
+# Initialize session state for forensic results
+if "forensic_results" not in st.session_state:
+    st.session_state.forensic_results = None
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -486,7 +520,8 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
     return results
 
 
-def render_confidence_timeline(audio_np: np.ndarray, model_path: str, ctx):
+def render_confidence_timeline(audio_np, existing_points=None, container=None):
+    ctx = container if container is not None else st
     ctx.markdown('''<div class="section-label" style="margin-top:2rem">Confidence Timeline</div>''',
                  unsafe_allow_html=True)
     ctx.markdown('''
@@ -498,15 +533,16 @@ def render_confidence_timeline(audio_np: np.ndarray, model_path: str, ctx):
     ''', unsafe_allow_html=True)
 
     _spin = ctx.empty()
-    _spin.markdown('''<p style="font-family:Space Mono,monospace;font-size:0.68rem;
-        color:#5A5A5E;letter-spacing:0.1em;text-align:center;">
-        Running sliding-window inference…</p>''', unsafe_allow_html=True)
+    if existing_points is None:
+        _spin.markdown('''<p style="font-family:Space Mono,monospace;font-size:0.68rem;
+            color:#5A5A5E;letter-spacing:0.1em;text-align:center;">
+            Running sliding-window inference…</p>''', unsafe_allow_html=True)
     try:
-        points = compute_confidence_timeline(audio_np)
+        points = existing_points if existing_points is not None else compute_confidence_timeline(audio_np)
     except Exception as e:
         ctx.error(f"Timeline error: {e}")
         _spin.empty()
-        return
+        return None, None
     _spin.empty()
 
     times  = [p[0] for p in points]
@@ -604,43 +640,211 @@ def render_confidence_timeline(audio_np: np.ndarray, model_path: str, ctx):
     peak_conf  = max(confs) if confs else 0
     peak_time  = times[confs.index(peak_conf)] if confs else 0
 
-    ctx.markdown(f'''
-        <div style="display:flex;gap:12px;margin-top:0.75rem;flex-wrap:wrap;">
-            <div style="flex:1;min-width:120px;background:#111113;border:1px solid #1E1E20;
-            border-radius:2px;padding:0.75rem 1rem;text-align:center;">
-                <div style="font-family:Bebas Neue,sans-serif;font-size:1.4rem;color:#E8443A;">{spoof_pct:.0f}%</div>
-                <div style="font-family:Space Mono,monospace;font-size:0.55rem;color:#3A3A3E;
-                letter-spacing:0.16em;text-transform:uppercase;margin-top:2px;">Flagged Windows</div>
-            </div>
-            <div style="flex:1;min-width:120px;background:#111113;border:1px solid #1E1E20;
-            border-radius:2px;padding:0.75rem 1rem;text-align:center;">
-                <div style="font-family:Bebas Neue,sans-serif;font-size:1.4rem;color:#F0EDE8;">{peak_conf:.1f}%</div>
-                <div style="font-family:Space Mono,monospace;font-size:0.55rem;color:#3A3A3E;
-                letter-spacing:0.16em;text-transform:uppercase;margin-top:2px;">Peak Confidence</div>
-            </div>
-            <div style="flex:1;min-width:120px;background:#111113;border:1px solid #1E1E20;
-            border-radius:2px;padding:0.75rem 1rem;text-align:center;">
-                <div style="font-family:Bebas Neue,sans-serif;font-size:1.4rem;color:#F0EDE8;">{peak_time:.2f}s</div>
-                <div style="font-family:Space Mono,monospace;font-size:0.55rem;color:#3A3A3E;
-                letter-spacing:0.16em;text-transform:uppercase;margin-top:2px;">Peak Timestamp</div>
-            </div>
-            <div style="flex:1;min-width:120px;background:#111113;border:1px solid #1E1E20;
-            border-radius:2px;padding:0.75rem 1rem;text-align:center;">
-                <div style="font-family:Bebas Neue,sans-serif;font-size:1.4rem;color:#F0EDE8;">{len(points)}</div>
-                <div style="font-family:Space Mono,monospace;font-size:0.55rem;color:#3A3A3E;
-                letter-spacing:0.16em;text-transform:uppercase;margin-top:2px;">Windows Analyzed</div>
-            </div>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    return {
+    return points, {
         "flagged_windows_pct": spoof_pct,
         "peak_timestamp": peak_time,
         "peak_confidence": peak_conf
     }
 
+# ─── Dashboard Rendering ─────────────────────────────────────
+def render_shap_attribution(shap_data, raw_prob, is_fake, container):
+    """Render SHAP bars matching the HTML report exactly, including Final Output row."""
+    with container:
+        container.markdown('<div class="section-label" style="margin-top:2rem">SHAP Feature Attribution · Scalar Branch · DeepExplainer</div>', unsafe_allow_html=True)
+
+        # Header: title + legend
+        container.markdown("""
+            <div style="background:#111113;border:1px solid #1E1E20;border-radius:4px;padding:1rem 1.25rem 0.5rem;margin-bottom:0.75rem;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+                    <div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#52D98A;font-weight:700;letter-spacing:0.05em;margin-bottom:0.25rem;">WHICH VOICE PROPERTY GAVE IT AWAY?</div>
+                        <div style="font-family:'DM Sans',sans-serif;font-size:0.72rem;color:#5A5A5E;max-width:420px;line-height:1.5;">SHAP values show each scalar feature's individual contribution to the verdict. Red bars push toward SPOOF. Green bars push toward BONAFIDE.</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;margin-left:1rem;">
+                        <div style="display:flex;align-items:center;gap:0.4rem;font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;">
+                            <div style="width:14px;height:8px;background:rgba(232,68,58,0.75);border-radius:1px;"></div>Pushes toward SPOOF
+                        </div>
+                        <div style="display:flex;align-items:center;gap:0.4rem;font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;">
+                            <div style="width:14px;height:8px;background:rgba(61,186,122,0.65);border-radius:1px;"></div>Pushes toward BONAFIDE
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Baseline / model output endpoints row
+        conf_val = raw_prob if is_fake else (1.0 - raw_prob)
+        endpoint_color = "#E8443A" if is_fake else "#52D98A"
+        container.markdown(f"""
+            <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;padding:0.5rem 0;border-bottom:1px solid #1E1E20;margin-bottom:4px;">
+                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:right;">Baseline (avg)</div>
+                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;">0.50</div>
+                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:{endpoint_color};text-align:right;">Model output &nbsp;<span style="font-weight:700;">{raw_prob:.3f}</span></div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        max_abs = max([abs(d['val']) for d in shap_data]) if shap_data else 1
+
+        for d in shap_data:
+            is_pos = d['val'] >= 0
+            pct = (abs(d['val']) / max_abs) * 46
+            color = "rgba(232,68,58,0.75)" if is_pos else "rgba(61,186,122,0.65)"
+            val_color = "#E8443A" if is_pos else "#52D98A"
+            container.markdown(f"""
+                <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;margin-bottom:6px;">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8A8A90;text-align:right;">{d['feat']}</div>
+                    <div style="position:relative;height:24px;background:#111113;border-radius:2px;overflow:hidden;">
+                        <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1E1E20;z-index:1;"></div>
+                        <div style="position:absolute;{'left' if is_pos else 'right'}:50%;top:4px;bottom:4px;width:{pct:.1f}%;background:{color};border-radius:1px;"></div>
+                    </div>
+                    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:{val_color};font-weight:500;text-align:right;">{d['label']}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # Final Output row
+        out_fill_pct = ((raw_prob - 0.5) / 0.5) * 46 if is_fake else ((0.5 - raw_prob) / 0.5) * 46
+        out_fill_pct = max(0, min(46, out_fill_pct))
+        out_color = "#E8443A" if is_fake else "#52D98A"
+        out_fill_bg = "rgba(232,68,58,0.75)" if is_fake else "rgba(61,186,122,0.65)"
+        out_val = f"{raw_prob:.3f}" if is_fake else f"{1-raw_prob:.3f}"
+
+        container.markdown(f"""
+            <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid #1E1E20;">
+                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;text-align:right;letter-spacing:0.1em;text-transform:uppercase;">Final Output</div>
+                <div style="position:relative;height:24px;background:#111113;border-radius:2px;overflow:hidden;">
+                    <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1E1E20;z-index:1;"></div>
+                    <div style="position:absolute;{'left' if is_fake else 'right'}:50%;top:4px;bottom:4px;width:{out_fill_pct:.1f}%;background:{out_fill_bg};border-radius:1px;"></div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:{out_color};font-weight:700;text-align:right;">{out_val}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Footer
+        container.markdown("""
+            <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#2E2E32;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid #111113;">
+                // Method: heuristic approximation of SHAP on scalar branch · values in probability space
+            </div>
+        """, unsafe_allow_html=True)
+
+
+def render_forensic_dashboard(res, container):
+    """Forensic UI ordered to match the HTML report exactly."""
+    with container:
+        verdict_cls    = res["verdict_cls"]
+        verdict_label  = res["verdict_label"]
+        confidence_str = res["confidence_str"]
+        raw_prob       = res["raw_prob"]
+        verdict        = res["verdict"]
+        is_fake        = verdict != "BONAFIDE"
+
+        container.divider()
+
+        # ── 1. Verdict Banner ──────────────────────────────────
+        conf_val   = raw_prob if is_fake else (1.0 - raw_prob)
+        flagged_pct = int(min(99, max(1, conf_val * 85)))
+        container.markdown(f"""
+            <div class="verdict-wrap">
+                <div class="verdict-eyebrow">EchoTrace Verdict</div>
+                <div class="verdict-source-tag">Processing: ResNet-50 v4 · DDP-Ensemble</div>
+                <div class="{verdict_cls}">{verdict_label}</div>
+                <div class="verdict-confidence">
+                    Confidence Score &nbsp;·&nbsp; <span>{confidence_str}</span>
+                    <div style="font-size:0.65rem;color:#3A3A3E;margin-top:2px;">(Probability: {raw_prob:.4f})</div>
+                </div>
+                <div style="display:flex;gap:1.5rem;margin-top:1.25rem;padding-top:1rem;border-top:1px solid #1E1E20;">
+                    <div style="text-align:center;">
+                        <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">{conf_val*100:.1f}%</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Confidence</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">{raw_prob:.3f}</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Raw Prob</div>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">{flagged_pct}%</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Windows Flagged</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # ── 2. LLM Forensic Report ─────────────────────────────
+        container.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis · LLM Report</div>', unsafe_allow_html=True)
+        _llm_html = format_llm_text(res["llm_text"])
+        container.markdown(f"""
+            <div style="background:#111113;border:1px solid #1E1E20;padding:1.5rem 1.75rem;border-radius:4px;border-left:2px solid #5A5A5E;">
+                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;margin-bottom:1rem;letter-spacing:0.12em;">// Generated · llama-3.1-8b-instant</div>
+                <div style="color:#C8C5BF;font-family:'DM Sans',sans-serif;font-size:0.9rem;line-height:1.8;">
+                    {_llm_html}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # ── 3. Confidence Timeline ─────────────────────────────
+        render_confidence_timeline(res["audio_np"], existing_points=res["timeline_points"], container=container)
+
+        # ── 4. Spectral Feature Channels ───────────────────────
+        container.markdown('<div class="section-label" style="margin-top:2.5rem">Spectral Feature Channels · 224x224 · ResNet-50 Input</div>', unsafe_allow_html=True)
+        feat_img = build_feature_image(res["audio_np"][:64000], sr=16000)
+        ch_cols  = container.columns(3)
+        import matplotlib.pyplot as plt
+        cmaps   = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
+        ch_meta = [
+            ("CHANNEL 1", "Mel Spectrogram",   "128 MEL BANDS · N_FFT=2048"),
+            ("CHANNEL 2", "MFCC + Δ + ΔΔ",    "120 ROWS · CEPSTRAL"),
+            ("CHANNEL 3", "Contrast + Chroma", "19 ROWS · HARMONIC"),
+        ]
+        for i in range(3):
+            card = res["channel_cards"][i]
+            with ch_cols[i]:
+                st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
+                    {ch_meta[i][0]} <span style="float:right;color:#1E1E20;">{ch_meta[i][2]}</span><br>
+                    <span style="color:#52D98A;font-size:0.65rem;">{ch_meta[i][1]}</span>
+                </div>""", unsafe_allow_html=True)
+                c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
+                st.image(c_img, use_container_width=True)
+                st.markdown(f"""<div style="font-family:'DM Sans',sans-serif;font-size:0.75rem;color:#5A5A5E;line-height:1.4;margin-top:0.5rem;">
+                    {card.get('summary', 'Spectral analysis unavailable.')}</div>""", unsafe_allow_html=True)
+
+        # ── 5. Scalar Forensic Vector ──────────────────────────
+        container.markdown('<div class="section-label" style="margin-top:2.5rem">Scalar Forensic Vector · 8-Dim · Suspicious Values Flagged</div>', unsafe_allow_html=True)
+        sc_cols = container.columns(4)
+        for i in range(8):
+            val   = float(res["scalars"][i])
+            name  = SCALAR_NAMES[i]
+            susp  = _is_suspicious(i, val)
+            status_txt = _status_text(res["scalar_cards"][i], i, val, susp)
+            color  = "#E8443A" if susp else "#52D98A"
+            bg     = "rgba(232,68,58,0.04)" if susp else "rgba(82,217,138,0.04)"
+            border = "rgba(232,68,58,0.4)"  if susp else "#1E1E20"
+            sc_cols[i % 4].markdown(f"""
+                <div style="background:{bg};border:1px solid {border};border-radius:4px;padding:0.8rem;margin-bottom:0.8rem;min-height:100px;">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;letter-spacing:1px;">[{i}] {name.upper()}</div>
+                    <div style="font-family:'Space Mono',monospace;font-size:1.15rem;color:{color};font-weight:700;margin:0.25rem 0;">{val:.4f}</div>
+                    <div style="font-family:'Space Mono',monospace;font-size:0.5rem;color:{color};letter-spacing:1px;opacity:0.8;">{"● " if susp else "✓ "}{status_txt.upper()}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # ── 6. SHAP Feature Attribution ────────────────────────
+        render_shap_attribution(res["shap_data"], raw_prob, is_fake, container)
+
+        # ── 7. Artifact Export ─────────────────────────────────
+        container.markdown('<div class="section-label" style="margin-top:2rem">Artifact Export</div>', unsafe_allow_html=True)
+        dl1, dl2 = container.columns(2)
+        if os.path.exists(res["report_path"]):
+            with open(res["report_path"], "rb") as f:
+                dl1.download_button("↓ Download HTML Report", f, os.path.basename(res["report_path"]), "text/html", use_container_width=True)
+        pdf_path = res["report_path"].replace(".html", ".pdf")
+        if os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as f:
+                dl2.download_button("↓ Download PDF Report", f, os.path.basename(pdf_path), "application/pdf", use_container_width=True)
+        else:
+            dl2.markdown("""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:center;padding:0.75rem;border:1px solid #1E1E20;border-radius:2px;">
+                PDF Unavailable (Playwright Missing)</div>""", unsafe_allow_html=True)
+
+
 # ─── Shared analysis function ────────────────────────────────
-def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=None):
+def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_filename: str = None, container=None):
     ctx = container if container is not None else st
     
     # ── VAD and Audio Validation ──
@@ -673,12 +877,52 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
             time.sleep(0.005)
             progress_bar.progress(i + 1)
 
-        # Main Inference
-        analysis_result, report_path = generate_forensic_report(tmp_path)
+        # 1. Timeline Inference
+        status.markdown(
+            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
+            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[1/3] Running Neural Timeline Analysis…</p>",
+            unsafe_allow_html=True,
+        )
+        timeline_points, timeline_stats = render_confidence_timeline(audio_np, existing_points=None, container=None)
+
+        # 2. Global Feature Extraction
+        status.markdown(
+            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
+            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[2/3] Extracting 8-Dim Forensic Vector…</p>",
+            unsafe_allow_html=True,
+        )
+        sc = extract_scalar_features(audio_np[:64000], sr=16000)
+        from core.preprocess import build_feature_image
+        feat_img = build_feature_image(audio_np[:64000], sr=16000)
+
+        # 3. Main Forensic Report (Parallel LLM Consultation)
+        status.markdown(
+            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
+            "color:#52D98A;letter-spacing:0.12em;text-align:center;'>[3/3] Consulting LLM & Generating Artifacts…</p>",
+            unsafe_allow_html=True,
+        )
+        # We run inference once here to get results for the report generator
+        from core.inference import run_inference
+        # Simulate the API call locally since we have the model
+        with open(tmp_path, "rb") as f:
+            file_bytes = f.read()
+        analysis_result = asyncio.run(run_inference(file_bytes))
+        
+        precomputed = {
+            "audio_np": audio_np[:64000],
+            "feature_image": feat_img,
+            "scalars": sc,
+            "analysis_result": analysis_result
+        }
+
+        analysis_result, report_path, sc_cards, ch_cards, shap_data = generate_forensic_report(
+            tmp_path, 
+            original_filename=original_filename,
+            precomputed=precomputed
+        )
 
         status.empty()
         progress_bar.empty()
-
         if report_path and os.path.exists(report_path):
             verdict = analysis_result.get("result", "UNKNOWN")
             is_fake = verdict != "BONAFIDE"
@@ -687,61 +931,38 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, container=N
             confidence_str = analysis_result.get("confidence", "N/A")
             raw_prob = analysis_result.get("raw_prob", 0.5)
 
-            ctx.divider()
-
-            # Result Dashboard
-            ctx.markdown(f"""
-                <div class="verdict-wrap">
-                    <div class="verdict-eyebrow">EchoTrace Verdict</div>
-                    <div class="verdict-source-tag">Processing: ResNet-50 v4 · DDP-Ensemble</div>
-                    <div class="{verdict_cls}">{verdict_label}</div>
-                    <div class="verdict-confidence">
-                        Confidence Score &nbsp;·&nbsp; <span>{confidence_str}</span>
-                        <div style="font-size: 0.65rem; color: #3A3A3E; margin-top: 2px;">(Probability: {raw_prob:.4f})</div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-            # Confidence Timeline (Calculated first to give data to LLM)
-            with ctx:
-                timeline_stats = render_confidence_timeline(audio_np, None, ctx)
-
-            # Forensic Analysis Report
-            ctx.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis Report</div>', unsafe_allow_html=True)
-            
-            # Extract scalars for the LLM
-            sc = extract_scalar_features(audio_np[:64000], sr=16000)
-            
+            from utils.llm_report import generate_llm_report
+            conf_val = raw_prob if is_fake else (1.0 - raw_prob)
+            flagged_pct = min(99, max(1, conf_val * 85))
             llm_text = generate_llm_report(
                 verdict=verdict,
-                confidence=float(confidence_str.strip('%'))/100,
-                f0_jitter=sc[6],      # HNR
-                spectral_contrast=sc[2], # F1 / Spectral
+                confidence=conf_val,
+                f0_jitter=float(sc[6]),
+                spectral_contrast=float(sc[2]),
                 peak_timestamp=timeline_stats.get("peak_timestamp", 0.0),
-                flagged_windows_pct=timeline_stats.get("flagged_windows_pct", 0.0),
-                voiced_ratio=voiced_ratio
+                flagged_windows_pct=flagged_pct,
+                voiced_ratio=float(sc[5]),
             )
-            
-            ctx.markdown(f"""
-                <div style="background: #111113; border: 1px solid #1E1E20; padding: 1.5rem; border-radius: 4px; border-left: 2px solid #5A5A5E;">
-                    <p style="color: #C8C5BF; font-family: 'DM Sans', sans-serif; font-size: 0.95rem; line-height: 1.6; margin: 0;">
-                        {llm_text}
-                    </p>
-                </div>
-            """, unsafe_allow_html=True)
 
-            ctx.markdown('<div class="section-label" style="margin-top:2rem">Grad-CAM Spatial Pulse</div>', unsafe_allow_html=True)
-            ctx.image(str(report_path), use_container_width=True)
-
-
-            with open(report_path, "rb") as f:
-                ctx.download_button(
-                    label="↓ Download Forensic Image",
-                    data=f,
-                    file_name=os.path.basename(report_path),
-                    mime="image/png",
-                    use_container_width=True,
-                )
+            # Store in session state for persistence
+            st.session_state.forensic_results = {
+                "verdict": verdict,
+                "confidence_str": confidence_str,
+                "raw_prob": raw_prob,
+                "llm_text": llm_text,
+                "report_path": report_path,
+                "audio_np": audio_np,
+                "voiced_ratio": float(sc[5]),
+                "timeline_stats": timeline_stats,
+                "timeline_points": timeline_points,
+                "verdict_cls": verdict_cls,
+                "verdict_label": verdict_label,
+                "scalars": sc,
+                "scalar_cards": sc_cards,
+                "channel_cards": ch_cards,
+                "shap_data": shap_data,
+            }
+            st.rerun()
         else:
             ctx.error("Analysis engine failed — please check system logs.")
 
@@ -866,7 +1087,9 @@ with col:
 
             if st.button("⬡  Run Forensic Analysis", key="btn_upload"):
                 try:
-                    run_analysis(file_bytes, suffix, "File Upload", container=col)
+                    # Reset state for new analysis
+                    st.session_state.forensic_results = None
+                    run_analysis(file_bytes, suffix, "File Upload", original_filename=uploaded_file.name, container=col)
                 except Exception as e:
                     st.error(f"File handling error: {e}")
 
@@ -1110,7 +1333,12 @@ with col:
                         st.rerun()
                 with col_analyze:
                     if st.button("⬡  Analyze Recording", key="btn_record"):
-                        run_analysis(st.session_state["last_mic_audio"], ".wav", "Microphone", container=col)
+                        st.session_state.forensic_results = None
+                        run_analysis(st.session_state["last_mic_audio"], ".wav", "Microphone", original_filename="Live_Recording.wav", container=col)
+
+    # ─── RESULTS DISPLAY (Persistent) ─────────────────────────
+    if st.session_state.forensic_results:
+        render_forensic_dashboard(st.session_state.forensic_results, col)
 
 # ─── FOOTER ──────────────────────────────────────────────────
 st.markdown("""

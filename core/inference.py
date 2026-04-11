@@ -93,6 +93,7 @@ async def run_inference(file_bytes: bytes) -> dict:
     Accepts raw audio bytes, returns verdict/confidence/heatmap dict.
     Compatible with the existing Streamlit + report generator call sites.
     """
+    import io
     SR = 16000
     DURATION = 4.0
     TARGET_LEN = int(SR * DURATION)

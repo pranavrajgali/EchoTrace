@@ -5,11 +5,9 @@ Fallback : Ollama (llama3.2:3b, local)
 Switch   : LLM_BACKEND env var = "groq" | "ollama"
 """
 import os
-import json
 import requests
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 # ── Config ───────────────────────────────────────────────────
@@ -20,44 +18,97 @@ GROQ_URL      = "https://api.groq.com/openai/v1/chat/completions"
 OLLAMA_MODEL  = "llama3.2:3b"
 OLLAMA_URL    = "http://localhost:11434/api/generate"
 
-LLM_BACKEND   = os.getenv("LLM_BACKEND", "groq").lower()   # "groq" | "ollama"
+LLM_BACKEND   = os.getenv("LLM_BACKEND", "groq").lower()
+TIMEOUT       = 30
 
-TIMEOUT       = 30   # seconds
+# Per-feature forensic metadata: (name, susp_if_low, susp_if_high, forensic_note)
+_FEATURE_META = [
+    ("Spectral Flatness",  True,  False, "vocoders are over-tonal → low flatness is a red flag"),
+    ("Zero Crossing Rate", True,  False, "synthetic speech has unnaturally consistent ZCR"),
+    ("F1 Formant",         False, True,  "unnatural vowel-space placement in neural TTS"),
+    ("F2 Formant",         False, True,  "over-smooth F2 transitions betray synthesis"),
+    ("F3 Formant",         False, True,  "missing micro-variation in F3 is a vocoder signature"),
+    ("Voiced Ratio",       False, False, "extreme values (too low/high) suggest tampering"),
+    ("HNR",                False, True,  "vocoders produce unnaturally clean, noise-free output"),
+    ("CPP",                False, True,  "over-regular cepstral peaks lack biological variance"),
+]
 
 
 def _build_prompt(
     verdict: str,
     confidence: float,
-    f0_jitter: float,
-    spectral_contrast: float,
-    peak_timestamp: float,
+    scalars: list,
     flagged_windows_pct: float,
-    voiced_ratio: float,
+    peak_timestamp: float,
 ) -> str:
-    """
-    Construct the forensic analysis prompt sent to the LLM.
-    """
-    label = "AI-GENERATED (SPOOF)" if verdict == "SPOOF" else "AUTHENTIC (BONAFIDE)"
-    return f"""You are EchoTrace, a forensic audio analysis AI. Write a concise plain-English report 
-analyzing the provided data. 
+    label    = "AI-GENERATED (SPOOF)" if verdict == "SPOOF" else "AUTHENTIC (BONAFIDE)"
+    is_spoof = verdict == "SPOOF"
 
-STRICT REQUIREMENTS:
-1. EXPLAIN the features: Briefly explain what the metrics (flatness, HNR, jitter, etc.) indicate about the audio's authenticity.
-2. BOLD key terms: Highlight important findings, metrics, and the final result using **bold** text.
-3. STRUCTURE: Start with the analysis of specific features, then provide a definitive **CONCLUSION** at the end.
-4. TONE: Clinical, forensic, and objective. No greetings or headers. 
-5. LENGTH: 3-5 sentences total.
+    feature_lines     = []
+    suspicious_names  = []
+    clean_names       = []
 
-ANALYSIS DATA:
-- Verdict: **{label}**
-- Model confidence: **{confidence:.1%}**
-- Harmonic-to-Noise Ratio (HNR): {f0_jitter:.4f} (synthetic speech is often "too clean" with high HNR)
-- Spectral / Formant Consistency: {spectral_contrast:.4f} (unnatural smoothness in transitions)
-- Peak anomaly at: {peak_timestamp:.2f}s
-- Flagged windows: **{flagged_windows_pct:.0f}%**
-- Voiced ratio: {voiced_ratio:.0%}
+    for i, (name, susp_low, susp_high, note) in enumerate(_FEATURE_META):
+        v = float(scalars[i])
+        if i == 5:  # Voiced Ratio: flag extremes
+            is_susp = v < 0.4 or v > 0.98
+        else:
+            is_susp = (susp_low and v < 0.15) or (susp_high and v > 0.70)
 
-Write the forensic summary now:"""
+        if is_susp:
+            flag = "SUSPICIOUS"
+            suspicious_names.append(name)
+        else:
+            flag = "OK"
+            clean_names.append(name)
+
+        feature_lines.append(
+            f"  [{i}] {name}: {v:.4f}  [{flag}]  — {note}"
+        )
+
+    feature_block = "\n".join(feature_lines)
+    susp_str  = ", ".join(suspicious_names)  if suspicious_names  else "none"
+    clean_str = ", ".join(clean_names)        if clean_names        else "none"
+
+    # Nuanced instruction based on verdict + feature tension
+    nuance = ""
+    if not is_spoof and suspicious_names:
+        nuance = (
+            f"\nCRITICAL: The verdict is BONAFIDE but [{susp_str}] showed suspicious values. "
+            f"You MUST: (a) name those features and explain what made them suspicious, "
+            f"(b) explain why [{clean_str}] were strong enough to override the suspicion, "
+            f"(c) state which synthesis technique would need to improve to fool this detector."
+        )
+    elif is_spoof and clean_names:
+        nuance = (
+            f"\nCRITICAL: The verdict is SPOOF but [{clean_str}] appeared within normal range. "
+            f"You MUST: (a) explain which specific features [{susp_str}] betrayed the synthesis, "
+            f"(b) acknowledge which features the vocoder almost convincingly reproduced, "
+            f"(c) explain what forensic artifact ultimately gave it away."
+        )
+
+    return f"""You are EchoTrace, an AI audio forensics system. Your job is to explain your findings in plain English — as if you're a forensic expert explaining results to someone with no technical background, like a journalist or a jury member.
+
+THE VERDICT: {label}
+CONFIDENCE: {confidence:.1%}
+KEY STATS: {flagged_windows_pct:.0f}% of the audio's 2-second windows were flagged as synthetic. The most suspicious moment was at {peak_timestamp:.2f} seconds.
+
+WHAT THE DETECTOR MEASURED (all values are 0–1 where 0.5 is "average human speech"):
+{feature_block}
+
+FLAGGED AS SUSPICIOUS: {susp_str if susp_str else "nothing — all features looked natural"}
+LOOKED NORMAL: {clean_str if clean_str else "nothing — everything was suspicious"}
+{nuance}
+
+HOW TO WRITE YOUR RESPONSE:
+1. Write 5–7 sentences in natural, flowing paragraph prose. No bullet points. No headers.
+2. For each technical feature you mention, immediately explain in plain English what it actually means. Use analogies — for example: "like the difference between real handwriting and a printed font", or "the way a voice recorded in a sound-proof studio sounds unnaturally clean compared to a natural room."
+3. Clearly explain WHY the system made its decision — what were the one or two strongest signals?
+4. If some features looked real and some looked suspicious, say so honestly and explain the tension in simple terms.
+5. **Bold** feature names and the final verdict.
+6. Final sentence MUST start with exactly "CONCLUSION:" and should be a single clear plain-English statement — like "In plain terms, this audio was most likely generated by an AI voice cloning tool, and our system is {confidence:.0%} confident in this finding." Avoid technical jargon in this sentence entirely. Make it something a non-technical director could read aloud and understand immediately.
+
+Write the report now:"""
 
 
 def _call_groq(prompt: str) -> str:
@@ -68,10 +119,10 @@ def _call_groq(prompt: str) -> str:
         "Content-Type":  "application/json",
     }
     payload = {
-        "model": GROQ_MODEL,
+        "model":    GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 256,
-        "temperature": 0.3,
+        "max_tokens": 420,
+        "temperature": 0.2,
     }
     r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=TIMEOUT)
     r.raise_for_status()
@@ -80,10 +131,10 @@ def _call_groq(prompt: str) -> str:
 
 def _call_ollama(prompt: str) -> str:
     payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.3, "num_predict": 256},
+        "model":   OLLAMA_MODEL,
+        "prompt":  prompt,
+        "stream":  False,
+        "options": {"temperature": 0.2, "num_predict": 420},
     }
     r = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
     r.raise_for_status()
@@ -93,73 +144,89 @@ def _call_ollama(prompt: str) -> str:
 def generate_llm_report(
     verdict: str,
     confidence: float,
+    scalars=None,
+    flagged_windows_pct: float = 0.0,
+    peak_timestamp: float = 0.0,
+    # Legacy compat args (used only when scalars is None)
     f0_jitter: float = 0.0,
     spectral_contrast: float = 0.0,
-    peak_timestamp: float = 0.0,
-    flagged_windows_pct: float = 0.0,
     voiced_ratio: float = 1.0,
 ) -> str:
     """
     Generate a plain-English forensic report string.
-    Returns a fallback rule-based summary if both LLM backends fail.
+    Returns a fallback rule-based summary if all LLM backends fail.
 
     Args:
         verdict              : "SPOOF" or "BONAFIDE"
         confidence           : model confidence as a float (0.0–1.0)
-        f0_jitter            : scalar feature value
-        spectral_contrast    : scalar feature value
-        peak_timestamp       : seconds into the audio where peak anomaly occurred
-        flagged_windows_pct  : % of sliding windows flagged as SPOOF (0–100)
-        voiced_ratio         : fraction of audio with detected speech (0.0–1.0)
+        scalars              : list/ndarray of 8 normalized scalar features [0, 1]
+        flagged_windows_pct  : % of sliding windows classified SPOOF (0–100)
+        peak_timestamp       : seconds where peak anomaly occurred
     """
-    prompt = _build_prompt(
-        verdict, confidence, f0_jitter, spectral_contrast,
-        peak_timestamp, flagged_windows_pct, voiced_ratio,
-    )
+    if scalars is not None:
+        scalar_list = [float(x) for x in scalars]
+        if len(scalar_list) < 8:
+            scalar_list += [0.5] * (8 - len(scalar_list))
+    else:
+        # Legacy compat: reconstruct rough 8-dim vector
+        scalar_list = [f0_jitter, 0.1, spectral_contrast, 0.5, 0.5,
+                       voiced_ratio, f0_jitter, spectral_contrast]
+
+    prompt = _build_prompt(verdict, confidence, scalar_list,
+                           flagged_windows_pct, peak_timestamp)
 
     backend = LLM_BACKEND
-
-    # Try primary backend
     try:
-        if backend == "groq":
-            return _call_groq(prompt)
-        else:
-            return _call_ollama(prompt)
+        return _call_groq(prompt) if backend == "groq" else _call_ollama(prompt)
     except Exception as e_primary:
         print(f"[llm_report] Primary backend ({backend}) failed: {e_primary}")
 
-    # Try fallback backend
     try:
         fallback = "ollama" if backend == "groq" else "groq"
         print(f"[llm_report] Trying fallback: {fallback}")
-        if fallback == "groq":
-            return _call_groq(prompt)
-        else:
-            return _call_ollama(prompt)
+        return _call_groq(prompt) if fallback == "groq" else _call_ollama(prompt)
     except Exception as e_fallback:
         print(f"[llm_report] Fallback backend failed: {e_fallback}")
 
-    # Rule-based fallback — always works
-    return _rule_based_report(verdict, confidence, flagged_windows_pct, voiced_ratio)
+    return _rule_based_report(verdict, confidence, scalar_list,
+                              flagged_windows_pct)
 
 
 def _rule_based_report(
     verdict: str,
     confidence: float,
+    scalars: list,
     flagged_windows_pct: float,
-    voiced_ratio: float,
 ) -> str:
+    sf, zcr, f1, f2, f3, vr, hnr, cpp = [float(x) for x in scalars]
+
+    # Find the most suspicious features
+    suspicious = []
+    if sf < 0.15:
+        suspicious.append(f"**Spectral Flatness** ({sf:.4f}) is abnormally tonal — consistent with vocoder synthesis")
+    if zcr < 0.15:
+        suspicious.append(f"**Zero Crossing Rate** ({zcr:.4f}) shows unnatural temporal consistency")
+    if hnr > 0.70:
+        suspicious.append(f"**HNR** ({hnr:.4f}) is unnaturally noise-free, a hallmark of neural TTS")
+    if cpp > 0.70:
+        suspicious.append(f"**CPP** ({cpp:.4f}) shows over-regular cepstral periodicity absent in real speech")
+    if vr < 0.4 or vr > 0.98:
+        suspicious.append(f"**Voiced Ratio** ({vr:.4f}) sits at an abnormal extreme")
+
+    susp_str = "; ".join(suspicious) if suspicious else "no individual scalar features exceeded suspicion thresholds"
+
     if verdict == "SPOOF":
         return (
-            f"Analysis of spectral characteristics reveals **{flagged_windows_pct:.0f}%** of segments contain synthetic artifacts. "
-            f"The **Harmonic-to-Noise Ratio** and **Spectral Flatness** exhibit levels of consistency typical of neural vocoder synthesis rather than natural human vocal tracts. "
-            f"Periodic anomalies were detected throughout the **{voiced_ratio:.0%}** voiced content. "
-            f"**CONCLUSION**: The sample is classified as **AI-GENERATED (SPOOF)** with **{confidence:.1%}** confidence."
+            f"Forensic analysis detected the following synthesis artifacts: {susp_str}. "
+            f"**{flagged_windows_pct:.0f}%** of the temporal analysis windows were flagged as containing vocoder-origin patterns. "
+            f"The convergence of anomalies across multiple scalar dimensions indicates neural TTS or voice conversion origin. "
+            f"CONCLUSION: The sample is classified as **AI-GENERATED (SPOOF)** with **{confidence:.1%}** confidence."
         )
     else:
+        tension = f"Although {susp_str}, " if suspicious else ""
         return (
-            f"Spectral features show natural variance in **formant transitions** and **zero-crossing rates** across the audio. "
-            f"Only **{flagged_windows_pct:.0f}%** of windows showed minor anomalies, which are consistent with ambient noise rather than synthesis. "
-            f"The **prosodic structure** aligns with authentic human phonation across **{voiced_ratio:.0%}** of the sample. "
-            f"**CONCLUSION**: The sample is classified as **AUTHENTIC (BONAFIDE)** with **{confidence:.1%}** confidence."
-        )
+            f"{tension}the overall scalar profile — **Spectral Flatness** ({sf:.4f}), **HNR** ({hnr:.4f}), and **CPP** ({cpp:.4f}) — "
+            f"falls within ranges consistent with natural human phonation. "
+            f"Only **{flagged_windows_pct:.0f}%** of temporal windows showed anomalous activity, insufficient to override authentic classification. "
+            f"CONCLUSION: The sample is classified as **AUTHENTIC (BONAFIDE)** with **{confidence:.1%}** confidence."
+        )
