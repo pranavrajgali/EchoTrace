@@ -14,6 +14,17 @@ import datetime
 import base64
 import asyncio
 import io
+
+# --- WINDOWS ASYNCIO FIX ---
+import sys
+if sys.platform == 'win32':
+    try:
+        from asyncio import WindowsProactorEventLoopPolicy
+    except ImportError:
+        pass
+    else:
+        if not isinstance(asyncio.get_event_loop_policy(), WindowsProactorEventLoopPolicy):
+            asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
 import torch
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -56,18 +67,30 @@ SUSP_DIRECTION = [
 # ── SHAP approximation ────────────────────────────────────────
 def _compute_shap_approx(scalars: np.ndarray) -> list:
     contributions = []
+    # Neutral centers for each feature based on suspicion thresholds
+    # 0:Flat, 1:ZCR, 2:F1, 3:F2, 4:F3, 5:Voiced, 6:HNR, 7:CPP
+    centers = [0.22, 0.22, 0.58, 0.58, 0.58, 0.65, 0.55, 0.55]
+
     for i, (susp_low, susp_high) in enumerate(SUSP_DIRECTION):
         v = float(scalars[i])
-        if susp_low:
-            contrib = max(0, 0.3 - v) * 0.8
+        if i == 5:  # Voiced Ratio
+            if v < 0.4:
+                contrib = (0.4 - v) * 0.8
+            elif v > 0.98:
+                contrib = (v - 0.98) * 0.8
+            else:
+                contrib = (v - 0.7) * 0.3  # Healthy middle
+        elif susp_low:
+            contrib = (centers[i] - v) * 1.0
         elif susp_high:
-            contrib = max(0, v - 0.7) * 0.8
+            contrib = (v - centers[i]) * 1.0
         else:
-            contrib = -(v - 0.5) * 0.1
+            contrib = (v - 0.5) * 0.1
         contributions.append(contrib)
 
-    total = sum(abs(c) for c in contributions) + 1e-9
-    scale = 0.44 / total
+    total_abs = sum(abs(c) for c in contributions) + 1e-9
+    # Cap scaling to prevent small noise features from looking huge
+    scale = 0.44 / max(total_abs, 1.4)
 
     result = []
     for i, c in enumerate(contributions):

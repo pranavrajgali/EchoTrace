@@ -10,6 +10,24 @@ import numpy as np
 from PIL import Image
 import torch
 
+# --- WINDOWS ASYNCIO FIX ---
+if sys.platform == 'win32':
+    try:
+        from asyncio import WindowsProactorEventLoopPolicy
+    except ImportError:
+        pass
+    else:
+        if not isinstance(asyncio.get_event_loop_policy(), WindowsProactorEventLoopPolicy):
+            asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
+
+# --- TORCH CLASSES INSPECTION FIX ---
+# Prevents "Tried to instantiate class '__path__._path'" error during inspection
+if hasattr(torch, "classes"):
+    try:
+        torch.classes.__path__ = []
+    except Exception:
+        pass
+
 # ── Download model weights from HF Hub if not present ──
 try:
     from download_model import ensure_model_exists
@@ -179,6 +197,15 @@ st.markdown("""
         border-radius: 2px;
         margin-bottom: 1.5rem;
         text-transform: uppercase;
+    }
+    
+    /* ─── Animations ─── */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .reveal-card {
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     .hero-badge::before {
@@ -729,7 +756,13 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
 
 
 def render_forensic_dashboard(res, container):
-    """Forensic UI ordered to match the HTML report exactly."""
+    """Forensic UI with progressive reveal and smooth animations."""
+    import time
+    
+    # Initialize reveal state if not present
+    if "reveal_stage" not in st.session_state:
+        st.session_state.reveal_stage = 0
+        
     with container:
         verdict_cls    = res["verdict_cls"]
         verdict_label  = res["verdict_label"]
@@ -738,13 +771,17 @@ def render_forensic_dashboard(res, container):
         verdict        = res["verdict"]
         is_fake        = verdict != "BONAFIDE"
 
+        # Determine if we should do a slow reveal
+        do_slow = st.session_state.get("trigger_slow_reveal", False)
+        
         container.divider()
-
-        # ── 1. Verdict Banner ──────────────────────────────────
+        
+        # 1. Verdict Banner (Shows immediately or first)
+        verdict_placeholder = container.empty()
         conf_val   = raw_prob if is_fake else (1.0 - raw_prob)
         flagged_pct = int(min(99, max(1, conf_val * 85)))
-        container.markdown(f"""
-            <div class="verdict-wrap">
+        verdict_placeholder.markdown(f"""
+            <div class="reveal-card verdict-wrap">
                 <div class="verdict-eyebrow">EchoTrace Verdict</div>
                 <div class="verdict-source-tag">Processing: ResNet-50 v4 · DDP-Ensemble</div>
                 <div class="{verdict_cls}">{verdict_label}</div>
@@ -768,80 +805,124 @@ def render_forensic_dashboard(res, container):
                 </div>
             </div>
         """, unsafe_allow_html=True)
+        
+        if do_slow: time.sleep(0.7)
 
-        # ── 2. LLM Forensic Report ─────────────────────────────
-        container.markdown('<div class="section-label" style="margin-top:2rem">Forensic Analysis · LLM Report</div>', unsafe_allow_html=True)
+        # 2. LLM Forensic Report
+        llm_placeholder = container.empty()
         _llm_html = format_llm_text(res["llm_text"])
-        container.markdown(f"""
-            <div style="background:#111113;border:1px solid #1E1E20;padding:1.5rem 1.75rem;border-radius:4px;border-left:2px solid #5A5A5E;">
-                <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;margin-bottom:1rem;letter-spacing:0.12em;">// Generated · llama-3.1-8b-instant</div>
-                <div style="color:#C8C5BF;font-family:'DM Sans',sans-serif;font-size:0.9rem;line-height:1.8;">
-                    {_llm_html}
+        llm_content = f"""
+            <div class="reveal-card">
+                <div class="section-label" style="margin-top:2rem">Forensic Analysis · LLM Report</div>
+                <div style="background:#111113;border:1px solid #1E1E20;padding:1.5rem 1.75rem;border-radius:4px;border-left:2px solid #5A5A5E;">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;margin-bottom:1rem;letter-spacing:0.12em;">// Generated · llama-3.1-8b-instant</div>
+                    <div style="color:#C8C5BF;font-family:'DM Sans',sans-serif;font-size:0.9rem;line-height:1.8;">
+                        {_llm_html}
+                    </div>
                 </div>
             </div>
-        """, unsafe_allow_html=True)
+        """
+        llm_placeholder.markdown(llm_content, unsafe_allow_html=True)
+        
+        if do_slow: time.sleep(0.8)
 
-        # ── 3. Confidence Timeline ─────────────────────────────
-        render_confidence_timeline(res["audio_np"], existing_points=res["timeline_points"], container=container)
+        # 3. Confidence Timeline
+        timeline_placeholder = container.empty()
+        timeline_ctx = timeline_placeholder.container()
+        with timeline_ctx:
+            timeline_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
+            render_confidence_timeline(res["audio_np"], existing_points=res["timeline_points"], container=timeline_ctx)
+            timeline_ctx.markdown('</div>', unsafe_allow_html=True)
+        
+        if do_slow: time.sleep(0.7)
 
-        # ── 4. Spectral Feature Channels ───────────────────────
-        container.markdown('<div class="section-label" style="margin-top:2.5rem">Spectral Feature Channels · 224x224 · ResNet-50 Input</div>', unsafe_allow_html=True)
-        feat_img = build_feature_image(res["audio_np"][:64000], sr=16000)
-        ch_cols  = container.columns(3)
-        import matplotlib.pyplot as plt
-        cmaps   = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
-        ch_meta = [
-            ("CHANNEL 1", "Mel Spectrogram",   "128 MEL BANDS · N_FFT=2048"),
-            ("CHANNEL 2", "MFCC + Δ + ΔΔ",    "120 ROWS · CEPSTRAL"),
-            ("CHANNEL 3", "Contrast + Chroma", "19 ROWS · HARMONIC"),
-        ]
-        for i in range(3):
-            card = res["channel_cards"][i]
-            with ch_cols[i]:
-                st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
-                    {ch_meta[i][0]} <span style="float:right;color:#1E1E20;">{ch_meta[i][2]}</span><br>
-                    <span style="color:#3DBA7A;font-size:0.65rem;">{ch_meta[i][1]}</span>
-                </div>""", unsafe_allow_html=True)
-                c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
-                st.image(c_img, use_container_width=True)
-                st.markdown(f"""<div style="font-family:'DM Sans',sans-serif;font-size:0.75rem;color:#5A5A5E;line-height:1.4;margin-top:0.5rem;">
-                    {card.get('summary', 'Spectral analysis unavailable.')}</div>""", unsafe_allow_html=True)
+        # 4. Spectral Feature Channels
+        spectral_placeholder = container.empty()
+        spectral_ctx = spectral_placeholder.container()
+        with spectral_ctx:
+            spectral_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
+            spectral_ctx.markdown('<div class="section-label" style="margin-top:2.5rem">Spectral Feature Channels · 224x224 · ResNet-50 Input</div>', unsafe_allow_html=True)
+            feat_img = build_feature_image(res["audio_np"][:64000], sr=16000)
+            ch_cols  = spectral_ctx.columns(3)
+            import matplotlib.pyplot as plt
+            cmaps   = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
+            ch_meta = [
+                ("CHANNEL 1", "Mel Spectrogram",   "128 MEL BANDS · N_FFT=2048"),
+                ("CHANNEL 2", "MFCC + Δ + ΔΔ",    "120 ROWS · CEPSTRAL"),
+                ("CHANNEL 3", "Contrast + Chroma", "19 ROWS · HARMONIC"),
+            ]
+            for i in range(3):
+                card = res["channel_cards"][i]
+                with ch_cols[i]:
+                    st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
+                        {ch_meta[i][0]} <span style="float:right;color:#1E1E20;">{ch_meta[i][2]}</span><br>
+                        <span style="color:#3DBA7A;font-size:0.65rem;">{ch_meta[i][1]}</span>
+                    </div>""", unsafe_allow_html=True)
+                    c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
+                    st.image(c_img, use_container_width=True)
+                    st.markdown(f"""<div style="font-family:'DM Sans',sans-serif;font-size:0.75rem;color:#5A5A5E;line-height:1.4;margin-top:0.5rem;">
+                        {card.get('summary', 'Spectral analysis unavailable.')}</div>""", unsafe_allow_html=True)
+            spectral_ctx.markdown('</div>', unsafe_allow_html=True)
 
-        # ── 5. Scalar Forensic Vector ──────────────────────────
-        container.markdown('<div class="section-label" style="margin-top:2.5rem">Scalar Forensic Vector · 8-Dim · Suspicious Values Flagged</div>', unsafe_allow_html=True)
-        sc_cols = container.columns(4)
-        for i in range(8):
-            val   = float(res["scalars"][i])
-            name  = SCALAR_NAMES[i]
-            susp  = _is_suspicious(i, val)
-            status_txt = _status_text(res["scalar_cards"][i], i, val, susp)
-            color  = "#E8443A" if susp else "#3DBA7A"
-            bg     = "rgba(232,68,58,0.04)" if susp else "rgba(61,186,122,0.04)"
-            border = "rgba(232,68,58,0.4)"  if susp else "#1E1E20"
-            sc_cols[i % 4].markdown(f"""
-                <div style="background:{bg};border:1px solid {border};border-radius:4px;padding:0.8rem;margin-bottom:0.8rem;min-height:100px;">
-                    <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;letter-spacing:1px;">[{i}] {name.upper()}</div>
-                    <div style="font-family:'Space Mono',monospace;font-size:1.15rem;color:{color};font-weight:700;margin:0.25rem 0;">{val:.4f}</div>
-                    <div style="font-family:'Space Mono',monospace;font-size:0.5rem;color:{color};letter-spacing:1px;opacity:0.8;">{"● " if susp else "✓ "}{status_txt.upper()}</div>
-                </div>
-            """, unsafe_allow_html=True)
+        if do_slow: time.sleep(0.7)
 
-        # ── 6. SHAP Feature Attribution ────────────────────────
-        render_shap_attribution(res["shap_data"], raw_prob, is_fake, container)
+        # 5. Scalar Forensic Vector
+        scalar_placeholder = container.empty()
+        scalar_ctx = scalar_placeholder.container()
+        with scalar_ctx:
+            scalar_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
+            scalar_ctx.markdown('<div class="section-label" style="margin-top:2.5rem">Scalar Forensic Vector · 8-Dim · Suspicious Values Flagged</div>', unsafe_allow_html=True)
+            sc_cols = scalar_ctx.columns(4)
+            for i in range(8):
+                val   = float(res["scalars"][i])
+                name  = SCALAR_NAMES[i]
+                susp  = _is_suspicious(i, val)
+                status_txt = _status_text(res["scalar_cards"][i], i, val, susp)
+                color  = "#E8443A" if susp else "#3DBA7A"
+                bg     = "rgba(232,68,58,0.04)" if susp else "rgba(61,186,122,0.04)"
+                border = "rgba(232,68,58,0.4)"  if susp else "#1E1E20"
+                sc_cols[i % 4].markdown(f"""
+                    <div style="background:{bg};border:1px solid {border};border-radius:4px;padding:0.8rem;margin-bottom:0.8rem;min-height:100px;">
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;letter-spacing:1px;">[{i}] {name.upper()}</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:1.15rem;color:{color};font-weight:700;margin:0.25rem 0;">{val:.4f}</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.5rem;color:{color};letter-spacing:1px;opacity:0.8;">{"● " if susp else "✓ "}{status_txt.upper()}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            scalar_ctx.markdown('</div>', unsafe_allow_html=True)
 
-        # ── 7. Artifact Export ─────────────────────────────────
-        container.markdown('<div class="section-label" style="margin-top:2rem">Artifact Export</div>', unsafe_allow_html=True)
-        dl1, dl2 = container.columns(2)
-        if os.path.exists(res["report_path"]):
-            with open(res["report_path"], "rb") as f:
-                dl1.download_button("↓ Download HTML Report", f, os.path.basename(res["report_path"]), "text/html", use_container_width=True)
-        pdf_path = res["report_path"].replace(".html", ".pdf")
-        if os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                dl2.download_button("↓ Download PDF Report", f, os.path.basename(pdf_path), "application/pdf", use_container_width=True)
-        else:
-            dl2.markdown("""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:center;padding:0.75rem;border:1px solid #1E1E20;border-radius:2px;">
-                PDF Unavailable (Playwright Missing)</div>""", unsafe_allow_html=True)
+        if do_slow: time.sleep(0.7)
+
+        # 6. SHAP Feature Attribution
+        shap_placeholder = container.empty()
+        shap_ctx = shap_placeholder.container()
+        with shap_ctx:
+            shap_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
+            render_shap_attribution(res["shap_data"], raw_prob, is_fake, shap_ctx)
+            shap_ctx.markdown('</div>', unsafe_allow_html=True)
+
+        if do_slow: time.sleep(0.5)
+
+        # 7. Artifact Export
+        export_placeholder = container.empty()
+        export_ctx = export_placeholder.container()
+        with export_ctx:
+            export_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
+            export_ctx.markdown('<div class="section-label" style="margin-top:2rem">Artifact Export</div>', unsafe_allow_html=True)
+            dl1, dl2 = export_ctx.columns(2)
+            if os.path.exists(res["report_path"]):
+                with open(res["report_path"], "rb") as f:
+                    dl1.download_button("↓ Download HTML Report", f, os.path.basename(res["report_path"]), "text/html", use_container_width=True)
+            pdf_path = res["report_path"].replace(".html", ".pdf")
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    dl2.download_button("↓ Download PDF Report", f, os.path.basename(pdf_path), "application/pdf", use_container_width=True)
+            else:
+                dl2.markdown("""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:center;padding:0.75rem;border:1px solid #1E1E20;border-radius:2px;">
+                    PDF Unavailable (Playwright Missing)</div>""", unsafe_allow_html=True)
+            export_ctx.markdown('</div>', unsafe_allow_html=True)
+
+        # Turn off slow reveal for future re-renders (like scrolls or button clicks)
+        st.session_state.trigger_slow_reveal = False
 
 
 # ─── Shared analysis function ────────────────────────────────
@@ -884,7 +965,20 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[1/3] Running Neural Timeline Analysis…</p>",
             unsafe_allow_html=True,
         )
-        timeline_points, timeline_stats = render_confidence_timeline(audio_np, existing_points=None, container=None)
+        timeline_points = compute_confidence_timeline(audio_np)
+        # Calculate stats for the summary report without rendering the UI yet
+        _temp_confs = [p[1] for p in timeline_points]
+        _temp_times = [p[0] for p in timeline_points]
+        _temp_labels = [p[2] for p in timeline_points]
+        peak_conf = max(_temp_confs) if _temp_confs else 0.0
+        peak_time = _temp_times[_temp_confs.index(peak_conf)] if _temp_confs else 0.0
+        spoof_pct = sum(1 for l in _temp_labels if l == "SPOOF") / len(_temp_labels) * 100 if _temp_labels else 0
+        
+        timeline_stats = {
+            "flagged_windows_pct": spoof_pct,
+            "peak_timestamp": peak_time,
+            "peak_confidence": peak_conf * 100
+        }
 
         # 2. Global Feature Extraction
         status.markdown(
@@ -946,6 +1040,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             )
 
             # Store in session state for persistence
+            st.session_state.trigger_slow_reveal = True
             st.session_state.forensic_results = {
                 "verdict": verdict,
                 "confidence_str": confidence_str,
@@ -1016,7 +1111,7 @@ with col:
     # ── Tab 1: File Upload ────────────────────────────────────
     with tab_upload:
         st.markdown('<div class="section-label">Upload Audio Sample</div>', unsafe_allow_html=True)
-        uploaded_file = st.file_uploader("", type=["wav", "mp3"], label_visibility="collapsed")
+        uploaded_file = st.file_uploader("Audio Sample", type=["wav", "mp3"], label_visibility="collapsed")
 
         if uploaded_file is not None:
             # Preview player for uploaded file

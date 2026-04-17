@@ -1,4 +1,11 @@
 import torch
+
+# --- TORCH CLASSES INSPECTION FIX ---
+if hasattr(torch, "classes"):
+    try:
+        torch.classes.__path__ = []
+    except Exception:
+        pass
 import cv2
 import librosa
 import numpy as np

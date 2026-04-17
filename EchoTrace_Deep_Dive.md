@@ -95,9 +95,9 @@ We don't believe in "Black Box" forensics. EchoTrace explains its working via tw
 
 | Metric | Benchmark (ASVspoof) | In-The-Wild (Real World) |
 | :--- | :--- | :--- |
-| **ROC-AUC** | 91.71% | **99.80%** |
-| **EER (Error Rate)** | 15.76% | **1.99%** |
-| **Recall (Fakes)** | 88.2% | **98.4%** |
+| **ROC-AUC** | 91.71% | **99.93%** |
+| **EER (Error Rate)** | 15.76% | **0.89%** |
+| **Recall (Fakes)** | 88.2% | **98.98%** |
 
 **Conclusion:** EchoTrace is specifically optimized for "In-The-Wild" detection—identifying the types of deepfakes found on social media and YouTube today, not just lab-grown artifacts.
 

@@ -108,10 +108,10 @@ Explain the reasoning behind this classification by examining two distinct analy
 2. THE 1D SCALAR EVALUATION (STATISTICAL SUMMARY VIEW): Discuss which simple, single-number measurements (like Spectral Flatness, Formants, or HNR/CPP) were most decisive. Explain how these numerical summaries provide critical quantitative evidence that supports the visual findings.
 
 WRITING GUIDELINES:
-- Write 6-8 sentences in professional, flowing paragraph prose. No bullet points.
-- Emphasize the two-step approach: Explain why the detailed "picture-like" information and the "quick summary" numerical measurements together make the classification stronger and more trustworthy.
-- **Bold** feature names and the final verdict.
-- Final sentence MUST start with "CONCLUSION:" and be a clear, jargon-free summary for a non-technical stakeholder (like a jury or journalist).
+- Write exactly 3-4 concise, high-impact sentences. No fluff.
+- Explain how the 2D spectral layers (visual texture) and 1D scalar metrics (statistical signatures) converge on this verdict.
+- **Bold** key feature names and the final verdict.
+- Final sentence MUST start with "CONCLUSION:" and be a sharp, one-sentence summary for a quick demo readout.
 
 Write the report now:"""
 
@@ -224,16 +224,14 @@ def _rule_based_report(
 
     if verdict == "SPOOF":
         return (
-            f"Forensic analysis detected the following synthesis artifacts: {susp_str}. "
-            f"**{flagged_windows_pct:.0f}%** of the temporal analysis windows were flagged as containing vocoder-origin patterns. "
-            f"The convergence of anomalies across multiple scalar dimensions indicates neural TTS or voice conversion origin. "
+            f"Forensic analysis detected synthesis artifacts including {susp_str}. "
+            f"With **{flagged_windows_pct:.0f}%** of internal windows flagged, the convergence of 2D spectral layers and 1D scalars confirms a synthetic origin. "
             f"CONCLUSION: The sample is classified as **AI-GENERATED (SPOOF)** with **{confidence:.1%}** confidence."
         )
     else:
-        tension = f"Although {susp_str}, " if suspicious else ""
+        tension = f"Despite minor {susp_str}, " if suspicious else ""
         return (
-            f"{tension}the overall scalar profile — **Spectral Flatness** ({sf:.4f}), **HNR** ({hnr:.4f}), and **CPP** ({cpp:.4f}) — "
-            f"falls within ranges consistent with natural human phonation. "
-            f"Only **{flagged_windows_pct:.0f}%** of temporal windows showed anomalous activity, insufficient to override authentic classification. "
+            f"{tension}the overall scalar profile falls within ranges consistent with natural human phonation. "
+            f"The 2D channel layers show biological variance that contradicts typical synthesis patterns. "
             f"CONCLUSION: The sample is classified as **AUTHENTIC (BONAFIDE)** with **{confidence:.1%}** confidence."
         )

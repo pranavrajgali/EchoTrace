@@ -127,11 +127,10 @@ def get_loader(rank, world_size, logger):
         dataset,
         batch_size=BATCH_PER_GPU,
         sampler=sampler,
-        num_workers=6,
+        num_workers=4,           # Reduced from 6 for stability on shared-memory-limited systems
         pin_memory=True,
         drop_last=True,
-        persistent_workers=True,
-        prefetch_factor=2,
+        persistent_workers=True, # Keeps workers alive for speed
     )
     return loader, sampler
 

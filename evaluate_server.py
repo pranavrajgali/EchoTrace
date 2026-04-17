@@ -51,7 +51,7 @@ from core.preprocess import load_audio, build_feature_image, extract_scalar_feat
 # ── Hyperparameters ──
 SR = 16000
 DURATION = 4.0
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 
 # ── ImageNet Normalization (MUST match training) ──
 # Training uses these exact statistics from torchvision.models
@@ -217,6 +217,12 @@ def load_model(checkpoint_path, device):
             state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
     
     model.load_state_dict(state_dict, strict=False)
+    
+    # Enable DataParallel to distribute batches across all available GPUs during inference
+    if torch.cuda.device_count() > 1:
+        print(f"\n🚀 System Specs Detected: Utilizing all {torch.cuda.device_count()} GPUs for parallel evaluation!")
+        model = torch.nn.DataParallel(model)
+        
     model.eval()
     return model
 
@@ -608,7 +614,7 @@ def main():
         Path(args.asv_root) / "ASVspoof2019_LA_dev/flac"
     )
     asv_dev_dataset = SimpleAudioDataset(asv_dev_files, asv_dev_labels, "ASVspoof Dev")
-    asv_dev_loader = torch.utils.data.DataLoader(asv_dev_dataset, batch_size=BATCH_SIZE, num_workers=4)
+    asv_dev_loader = torch.utils.data.DataLoader(asv_dev_dataset, batch_size=BATCH_SIZE, num_workers=8)
     
     print("  ASVspoof Eval:")
     asv_eval_files, asv_eval_labels, asv_eval_systems = parse_asv_protocol(
@@ -616,12 +622,12 @@ def main():
         Path(args.asv_root) / "ASVspoof2019_LA_eval/flac"
     )
     asv_eval_dataset = SimpleAudioDataset(asv_eval_files, asv_eval_labels, "ASVspoof Eval")
-    asv_eval_loader = torch.utils.data.DataLoader(asv_eval_dataset, batch_size=BATCH_SIZE, num_workers=4)
+    asv_eval_loader = torch.utils.data.DataLoader(asv_eval_dataset, batch_size=BATCH_SIZE, num_workers=8)
     
     print("  InTheWild Test:")
     itw_files, itw_labels = load_inthe_wild_test(args.itw_test_root)
     itw_dataset = SimpleAudioDataset(itw_files, itw_labels, "InTheWild Test")
-    itw_loader = torch.utils.data.DataLoader(itw_dataset, batch_size=BATCH_SIZE, num_workers=4)
+    itw_loader = torch.utils.data.DataLoader(itw_dataset, batch_size=BATCH_SIZE, num_workers=8)
     
     # Evaluate
     print("\nEvaluating...\n")
@@ -683,4 +689,10 @@ def main():
 
 
 if __name__ == "__main__":
+    import cv2
+    cv2.setNumThreads(0)
+    try:
+        torch.multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
     main()

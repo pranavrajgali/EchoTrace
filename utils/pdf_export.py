@@ -33,6 +33,18 @@ def html_to_pdf(html_path: str, pdf_path: str = None) -> str | None:
     except ImportError:
         return None
 
+    import sys
+    import asyncio
+    if sys.platform == 'win32':
+        # Playwright requires ProactorEventLoop on Windows to support subprocesses
+        try:
+            from asyncio import WindowsProactorEventLoopPolicy
+        except ImportError:
+            pass
+        else:
+            if not isinstance(asyncio.get_event_loop_policy(), WindowsProactorEventLoopPolicy):
+                asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
+
     if pdf_path is None:
         pdf_path = os.path.splitext(html_path)[0] + ".pdf"
 
