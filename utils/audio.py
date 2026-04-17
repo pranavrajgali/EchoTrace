@@ -49,7 +49,7 @@ def validate_and_load(file_bytes: bytes, min_duration_sec: float = 2.0) -> tuple
     # The file header says 16kHz, but the actual energy only reaches ~4kHz.
     # This produces an empty upper spectrogram → unreliable model output.
     effective_bw = _estimate_bandwidth(audio, sr)
-    if effective_bw < 5000:
+    if effective_bw < 3500:
         raise AudioValidationError(
             f"Audio bandwidth too low (~{effective_bw:.0f} Hz effective). "
             "This appears to be low-rate audio (e.g. 8 kHz telephony) that was "
