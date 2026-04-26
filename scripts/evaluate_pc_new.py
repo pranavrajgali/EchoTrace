@@ -194,7 +194,7 @@ def run_main(cpu_only=False):
     for d_cfg in datasets:
         try:
             ds = d_cfg['class'](*d_cfg['args'], **d_cfg.get('kwargs', {}), augment=False)
-            loader = DataLoader(ds, batch_size=32, num_workers=0 if cpu_only else 4, pin_memory=not cpu_only)
+            loader = DataLoader(ds, batch_size=64, num_workers=8, pin_memory=not cpu_only)
             
             res = evaluate(model, loader, device, d_cfg['name'])
             results.append(res)
