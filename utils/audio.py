@@ -48,8 +48,11 @@ def validate_and_load(file_bytes: bytes, min_duration_sec: float = 2.0) -> tuple
     # Catches audio that was upsampled from a lower rate (e.g. 8kHz→16kHz).
     # The file header says 16kHz, but the actual energy only reaches ~4kHz.
     # This produces an empty upper spectrogram → unreliable model output.
+    # NOTE: WhatsApp Opus codec aggressively compresses high frequencies,
+    # causing rolloff around 3500-4000 Hz — these files are still usable.
+    # We only hard-block genuinely unusable telephony audio (< 2500 Hz).
     effective_bw = _estimate_bandwidth(audio, sr)
-    if effective_bw < 3500:
+    if effective_bw < 2500:
         raise AudioValidationError(
             f"Audio bandwidth too low (~{effective_bw:.0f} Hz effective). "
             "This appears to be low-rate audio (e.g. 8 kHz telephony) that was "

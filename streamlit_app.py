@@ -542,7 +542,7 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
             prob = torch.sigmoid(output).item()
 
         timestamp = start / SR
-        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.5 else "BONAFIDE"))
+        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.6 else "BONAFIDE"))
 
     return results
 
@@ -590,7 +590,7 @@ def render_confidence_timeline(audio_np, existing_points=None, container=None):
 
     # Threshold line
     fig.add_hline(
-        y=50,
+        y=60,
         line_dash="dot",
         line_color="rgba(232,68,58,0.4)",
         line_width=1.5,
@@ -842,7 +842,7 @@ def render_forensic_dashboard(res, container):
         with spectral_ctx:
             spectral_ctx.markdown('<div class="reveal-card">', unsafe_allow_html=True)
             spectral_ctx.markdown('<div class="section-label" style="margin-top:2.5rem">Spectral Feature Channels · 224x224 · ResNet-50 Input</div>', unsafe_allow_html=True)
-            feat_img = build_feature_image(res["audio_np"][:64000], sr=16000)
+            feat_img = build_feature_image(res["analysis_chunk"], sr=16000)
             ch_cols  = spectral_ctx.columns(3)
             import matplotlib.pyplot as plt
             cmaps   = [plt.get_cmap('magma'), plt.get_cmap('viridis'), plt.get_cmap('coolwarm')]
@@ -980,15 +980,34 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             "peak_confidence": peak_conf * 100
         }
 
-        # 2. Global Feature Extraction
+        # 2. Global Feature Extraction — use the PEAK WINDOW from the timeline
+        #    instead of always the first 4 seconds, so scalars and spectral
+        #    channels reflect the most suspicious region of the recording.
         status.markdown(
             "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
             "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[2/3] Extracting 8-Dim Forensic Vector…</p>",
             unsafe_allow_html=True,
         )
-        sc = extract_scalar_features(audio_np[:64000], sr=16000)
+        SR = 16000
+        ANALYSIS_LEN = SR * 4  # 4 seconds = 64000 samples
+        if len(timeline_points) > 0 and peak_time > 0:
+            # Center a 4-second window on the peak timestamp
+            peak_sample = int(peak_time * SR)
+            start = max(0, peak_sample - ANALYSIS_LEN // 2)
+            end = start + ANALYSIS_LEN
+            if end > len(audio_np):
+                end = len(audio_np)
+                start = max(0, end - ANALYSIS_LEN)
+            analysis_chunk = audio_np[start:end]
+        else:
+            analysis_chunk = audio_np[:ANALYSIS_LEN]
+        # Pad if audio is shorter than 4 seconds
+        if len(analysis_chunk) < ANALYSIS_LEN:
+            analysis_chunk = np.pad(analysis_chunk, (0, ANALYSIS_LEN - len(analysis_chunk)), mode='reflect')
+
+        sc = extract_scalar_features(analysis_chunk, sr=SR)
         from core.preprocess import build_feature_image
-        feat_img = build_feature_image(audio_np[:64000], sr=16000)
+        feat_img = build_feature_image(analysis_chunk, sr=SR)
 
         # 3. Main Forensic Report (Parallel LLM Consultation)
         status.markdown(
@@ -996,15 +1015,43 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[3/3] Consulting LLM & Generating Artifacts…</p>",
             unsafe_allow_html=True,
         )
-        # We run inference once here to get results for the report generator
-        from core.inference import run_inference
-        # Simulate the API call locally since we have the model
-        with open(tmp_path, "rb") as f:
-            file_bytes = f.read()
-        analysis_result = asyncio.run(run_inference(file_bytes))
+        # Derive final verdict from full-recording timeline using softmax-weighted averaging.
+        # This ensures every sliding window contributes to the verdict, with high-confidence
+        # spoof windows weighted exponentially more than low-confidence ones.
+        if len(timeline_points) > 0:
+            # ── CALIBRATION FIX ──
+            # 1. Filter out 'noise floor' windows (very low prob) that often 
+            #    represent silence or non-speech artifacts.
+            valid_probs = np.array([p[1] for p in timeline_points if p[1] > 0.15])
+            
+            if len(valid_probs) > 0:
+                # 2. Softmax weighting with high temperature for stability
+                weights = np.exp(valid_probs / 2.5)
+                weights = weights / weights.sum()
+                
+                # 3. Apply -0.10 Calibration Offset to account for local mic bias
+                raw_final = float(np.dot(weights, valid_probs))
+                final_prob = max(0.0, min(1.0, raw_final - 0.10))
+            else:
+                final_prob = 0.0 # Purely clean/silent
+                
+            verdict = "SPOOF" if final_prob > 0.6 else "BONAFIDE"
+            confidence = final_prob if verdict == "SPOOF" else 1.0 - final_prob
+            analysis_result = {
+                "result": verdict,
+                "confidence": f"{confidence:.2%}",
+                "raw_prob": final_prob,
+                "heatmap": "",
+            }
+        else:
+            # Fallback: no timeline data, use single-shot inference on first 4s
+            from core.inference import run_inference
+            with open(tmp_path, "rb") as f:
+                file_bytes = f.read()
+            analysis_result = asyncio.run(run_inference(file_bytes))
         
         precomputed = {
-            "audio_np": audio_np[:64000],
+            "audio_np": analysis_chunk,
             "feature_image": feat_img,
             "scalars": sc,
             "analysis_result": analysis_result,
@@ -1048,6 +1095,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
                 "llm_text": llm_text,
                 "report_path": report_path,
                 "audio_np": audio_np,
+                "analysis_chunk": analysis_chunk,
                 "voiced_ratio": float(sc[5]),
                 "timeline_stats": timeline_stats,
                 "timeline_points": timeline_points,
@@ -1133,11 +1181,9 @@ with col:
                 b64 = base64.b64encode(file_bytes).decode("utf-8")
                 mime = "audio/mpeg" if suffix == ".mp3" else "audio/wav"
 
-            st.markdown(f'''
-                <audio controls style="width:100%;margin-bottom:0.75rem;border-radius:4px;background:#111113;">
-                    <source src="data:{mime};base64,{b64}" type="{mime}">
-                </audio>
-            ''', unsafe_allow_html=True)
+            import hashlib
+            file_hash = hashlib.md5(file_bytes).hexdigest()[:8]
+            st.audio(file_bytes, format=mime)
 
             # Static waveform for uploaded file
             st.markdown('<div class="section-label" style="margin-top:1rem">Waveform</div>', unsafe_allow_html=True)
@@ -1416,11 +1462,9 @@ with col:
                     b64 = base64.b64encode(raw).decode("utf-8")
                     mime = "audio/wav"
 
-                st.markdown(f'''
-                    <audio controls style="width:100%;margin-top:0.5rem;border-radius:4px;background:#111113;">
-                        <source src="data:{mime};base64,{b64}" type="{mime}">
-                    </audio>
-                ''', unsafe_allow_html=True)
+                import hashlib
+                mic_hash = hashlib.md5(raw).hexdigest()[:8]
+                st.audio(raw, format=mime)
 
                 col_rerecord, col_analyze = st.columns([1, 2])
                 with col_rerecord:
@@ -1432,9 +1476,15 @@ with col:
                         st.session_state.forensic_results = None
                         run_analysis(st.session_state["last_mic_audio"], ".wav", "Microphone", original_filename="Live_Recording.wav", container=col)
 
-    # ─── RESULTS DISPLAY (Persistent) ─────────────────────────
-    if st.session_state.forensic_results:
-        render_forensic_dashboard(st.session_state.forensic_results, col)
+    # ─── (Results render below, outside the narrow column) ─────
+
+# ─── FULL-WIDTH RESULTS DISPLAY ──────────────────────────────
+# Render the forensic dashboard outside the narrow center column
+# so the timeline chart and spectral channels get proper width.
+if st.session_state.forensic_results:
+    _, results_col, _ = st.columns([0.5, 3.4, 0.5])
+    with results_col:
+        render_forensic_dashboard(st.session_state.forensic_results, results_col)
 
 # ─── FOOTER ──────────────────────────────────────────────────
 st.markdown("""

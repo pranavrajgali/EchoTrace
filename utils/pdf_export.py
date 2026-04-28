@@ -55,13 +55,38 @@ def html_to_pdf(html_path: str, pdf_path: str = None) -> str | None:
         browser = pw.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(file_url, wait_until="networkidle")
-        # Allow Google Fonts to finish loading
-        page.wait_for_timeout(1500)
+        # Allow Google Fonts and background images to finish loading
+        page.wait_for_timeout(2500)
+        
+        # Inject CSS to force dark background on print and avoid element splitting
+        page.add_style_tag(content="""
+            @page { margin: 0; background: #09090A; }
+            @media print {
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              body { background: #09090A !important; margin: 0 !important; padding: 24px 32px !important; }
+              html { background: #09090A !important; }
+              .scalar-card, .channel-card, .shap-wrap, .llm-report, 
+              .verdict-banner, .shap-row, .channel-grid, .scalar-grid {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+              .section-label {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+              }
+              .channel-grid, .scalar-grid {
+                page-break-before: avoid !important;
+                break-before: avoid !important;
+              }
+            }
+        """)
+
         page.pdf(
             path=pdf_path,
             format="A4",
+            scale=0.8,
             print_background=True,
-            margin={"top": "12mm", "bottom": "12mm", "left": "8mm", "right": "8mm"},
+            margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
         )
         browser.close()
 
