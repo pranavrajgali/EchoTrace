@@ -21,6 +21,7 @@ import json
 import os
 import random
 import socket
+import sys
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
@@ -29,6 +30,12 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, DistributedSampler, Subset
+
+# Make repo-local imports work from both `python` and `torchrun`.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from core.model import EchoTraceResNet, get_optimizer
 from core.preprocess import (
