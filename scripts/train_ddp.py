@@ -52,14 +52,14 @@ BATCH_PER_GPU  = 32
 NUM_EPOCHS         = 10
 AUGMENT_PROB       = 0.4
 
-# Dataset subset sizes (Balanced 50/50 Split)
-# Real:  ASV ~2,580 + WaveFake 40,000 + ITW 12,500 + LibriSpeech 20,000 = ~75,080
-# Fake:  ASV ~22,800 + WaveFake 40,000 + ITW 12,500                     = ~75,300
-# Total: ~150,380 samples | Ratio: 49.9% real / 50.1% fake
+# Dataset subset sizes (Balanced 50/50 Split — verified against on-disk counts)
+# Real:  ASV 2,580 + WaveFake 18,100 + ITW 12,500 + LibriSpeech 38,000 = 71,180
+# Fake:  ASV 22,800 + WaveFake 40,000 + ITW 8,271                      = 71,071
+# Total: ~142,251 samples | Ratio: 50.04% real / 49.96% fake
 ASV_SUBSET         = None     # ~25,380 samples (2,580 real + 22,800 fake)
-WAVEFAKE_SUBSET    = 80000    # 40,000 real + 40,000 fake
-ITW_SUBSET         = 25000    # 12,500 real + 12,500 fake
-LIBRISPEECH_SUBSET = 20000    # 20,000 real (speaker diversity anchor)
+WAVEFAKE_SUBSET    = 80000    # 18,100 real (disk limit) + 40,000 fake
+ITW_SUBSET         = 25000    # 12,500 real + 8,271 fake (disk limit)
+LIBRISPEECH_SUBSET = 38000    # 38,000 real (compensates for WaveFake/ITW shortfall)
 
 # Validation set size (None = full split)
 VAL_SIZE           = None
