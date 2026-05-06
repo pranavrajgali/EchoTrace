@@ -78,7 +78,8 @@ Instead of standard grayscale spectrograms, EchoTrace packs three distinct foren
 
 ## Pipeline & Architecture Diagram
 
-![EchoTrace Pipeline And Architecture](https://github.com/user-attachments/assets/62d449e6-53e0-4ca5-ba52-086f61e55381)
+![EchoTrace Pipeline And Architecture](https://github.com/user-attachments/assets/185e6051-df9d-4e5c-a40c-6efff41fc57d)
+
 
 ***
 
