@@ -23,7 +23,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["NUMBA_NUM_THREADS"] = "1"
 
-from core.model import EchoTraceResNet, get_loss, get_optimizer
+from core.model import EchoTraceResNet, FocalLoss, get_optimizer
 from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, LibriSpeechDataset, build_combined_dataset
 
 # ── Evaluation imports ──
@@ -49,14 +49,17 @@ LOG_PATH       = "/home/jovyan/work/EchoTrace/ddp_train.log"
 BATCH_PER_GPU  = 32
 
 # ── TRAINING CONFIG ──────────────────────────────────────────
-NUM_EPOCHS         = 5
-AUGMENT_PROB       = 0.2
+NUM_EPOCHS         = 10
+AUGMENT_PROB       = 0.4
 
-# Dataset subset sizes
-ASV_SUBSET         = None     # ~25,380 samples
-WAVEFAKE_SUBSET    = None     # ~117,100 samples
-ITW_SUBSET         = None     # ~38,000 samples
-LIBRISPEECH_SUBSET = 60000    # capped — all real
+# Dataset subset sizes (Balanced 50/50 Split)
+# Real:  ASV ~2,580 + WaveFake 40,000 + ITW 12,500 + LibriSpeech 20,000 = ~75,080
+# Fake:  ASV ~22,800 + WaveFake 40,000 + ITW 12,500                     = ~75,300
+# Total: ~150,380 samples | Ratio: 49.9% real / 50.1% fake
+ASV_SUBSET         = None     # ~25,380 samples (2,580 real + 22,800 fake)
+WAVEFAKE_SUBSET    = 80000    # 40,000 real + 40,000 fake
+ITW_SUBSET         = 25000    # 12,500 real + 12,500 fake
+LIBRISPEECH_SUBSET = 20000    # 20,000 real (speaker diversity anchor)
 
 # Validation set size (None = full split)
 VAL_SIZE           = None
@@ -127,10 +130,11 @@ def get_loader(rank, world_size, logger):
         dataset,
         batch_size=BATCH_PER_GPU,
         sampler=sampler,
-        num_workers=4,           # Reduced from 6 for stability on shared-memory-limited systems
+        num_workers=6,           # 6 workers per GPU = 24 total CPU workers across 4 GPUs
         pin_memory=True,
         drop_last=True,
-        persistent_workers=True, # Keeps workers alive for speed
+        persistent_workers=True, # Keeps workers alive between epochs (avoids respawn overhead)
+        prefetch_factor=3,       # Pre-load 3 batches per worker for GPU saturation
     )
     return loader, sampler
 
@@ -267,8 +271,8 @@ def train(rank, world_size):
 
     torch.backends.cudnn.benchmark = True # Free CNN acceleration
     model     = DDP(model, device_ids=[rank], find_unused_parameters=False)
-    # Removed pos_weight downweighting of fakes to improve recall
-    criterion = torch.nn.BCEWithLogitsLoss()
+    # FocalLoss with alpha=0.5 for balanced 50/50 dataset — focuses on hard examples
+    criterion = FocalLoss(alpha=0.5, gamma=2.0)
     optimizer = get_optimizer(model.module)
     scaler    = torch.amp.GradScaler("cuda")
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, eta_min=1e-7)
@@ -310,10 +314,13 @@ def train(rank, world_size):
             model.module.load_state_dict(ckpt['model_state'])
             optimizer.load_state_dict(ckpt['optimizer_state'])
             scheduler.load_state_dict(ckpt['scheduler_state'])
+            if 'scaler_state' in ckpt:
+                scaler.load_state_dict(ckpt['scaler_state'])
             start_epoch = ckpt['epoch'] + 1
+            best_loss = ckpt.get('best_loss', float("inf"))
             if rank == 0:
                 logger.info(f"Resumed from checkpoint: {latest_ckpt}")
-                logger.info(f"Starting from epoch {start_epoch + 1}")
+                logger.info(f"Starting from epoch {start_epoch + 1} | best_loss={best_loss:.4f}")
         except Exception as e:
             if rank == 0:
                 logger.error(f"Failed to load checkpoint: {e}")
@@ -335,7 +342,7 @@ def train(rank, world_size):
             scalars = scalars.to(device, non_blocking=True)
             labels  = labels.float().unsqueeze(1).to(device, non_blocking=True)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)  # Faster than zeroing — sets grads to None
 
             with torch.amp.autocast("cuda"):
                 outputs = model(images, scalars)
@@ -343,6 +350,13 @@ def train(rank, world_size):
 
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
+
+            # NaN guard: check BEFORE stepping to avoid corrupting optimizer state
+            if torch.isnan(loss):
+                if rank == 0: logger.error(f"NaN Loss detected at batch {batch_idx}, skipping update!")
+                scaler.update()  # Must still call update to keep scaler in sync
+                continue
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
@@ -386,18 +400,24 @@ def train(rank, world_size):
                     f"roc_auc={val_roc_auc:.4f}"
                 )
 
-            # Save full checkpoint (model + optimizer + scheduler + epoch + best_loss)
+            # Save full checkpoint (model + optimizer + scheduler + scaler + epoch + best_loss)
             checkpoint = {
                 'epoch': epoch,
                 'model_state': model.module.state_dict(),
                 'optimizer_state': optimizer.state_dict(),
                 'scheduler_state': scheduler.state_dict(),
+                'scaler_state': scaler.state_dict(),   # AMP scaler state for safe resumption
+                'best_loss': best_loss,
             }
             ckpt_path = os.path.join(CHECKPOINT_DIR, f"checkpoint_epoch_{epoch+1:02d}.pth")
             torch.save(checkpoint, ckpt_path)
             
-            # Also save final model weights for inference
-            torch.save(model.module.state_dict(), FINAL_PATH)
+            # If this is the best model so far, save it as the final model
+            if val_loader is not None and val_loss < best_loss:
+                best_loss = val_loss
+                torch.save(model.module.state_dict(), FINAL_PATH)
+                logger.info(f"*** New best model (loss: {best_loss:.4f}) saved to {FINAL_PATH} ***")
+            
             logger.info(f"Saved checkpoint -> {ckpt_path}")
 
         # Ensure all ranks wait for Rank 0 to finish evaluation and saving

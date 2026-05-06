@@ -353,7 +353,8 @@ class ASVDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        audio = load_audio(self.files[idx])
+        # Use random crop if augmenting to increase temporal diversity
+        audio = load_audio(self.files[idx], random_crop=self.augment)
         if self.augment:
             audio = self.augmenter.apply_augmentations(audio)
         tensor, scalars = _to_tensor(audio)
@@ -406,7 +407,8 @@ class WaveFakeDataset(Dataset):
         return len(self.all_files)
 
     def __getitem__(self, idx):
-        audio = load_audio(self.all_files[idx])
+        # Use random crop if augmenting to increase temporal diversity
+        audio = load_audio(self.all_files[idx], random_crop=self.augment)
         if self.augment:
             audio = self.augmenter.apply_augmentations(audio)
         tensor, scalars = _to_tensor(audio)
@@ -458,7 +460,8 @@ class InTheWildDataset(Dataset):
         return len(self.all_files)
 
     def __getitem__(self, idx):
-        audio = load_audio(self.all_files[idx])
+        # Use random crop if augmenting to increase temporal diversity
+        audio = load_audio(self.all_files[idx], random_crop=self.augment)
         if self.augment:
             audio = self.augmenter.apply_augmentations(audio)
         tensor, scalars = _to_tensor(audio)

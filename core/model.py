@@ -37,8 +37,10 @@ class FocalLoss(nn.Module):
         p_t = p * targets + (1 - p) * (1 - targets)
 
         # Apply focal modulation: down-weight easy examples
+        # alpha_t handles class imbalance: alpha for class 1, (1-alpha) for class 0
+        alpha_t = targets * self.alpha + (1 - targets) * (1 - self.alpha)
         focal_weight = (1 - p_t) ** self.gamma
-        focal = self.alpha * focal_weight * bce
+        focal = alpha_t * focal_weight * bce
 
         return focal.mean()
 
@@ -123,4 +125,4 @@ def get_optimizer(model):
     return torch.optim.Adam([
         {"params": model.resnet.layer4.parameters(), "lr": 1e-5},
         {"params": model.fc.parameters(),            "lr": 1e-4},
-    ])
+    ], weight_decay=1e-4)
