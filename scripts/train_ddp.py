@@ -23,6 +23,11 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["NUMBA_NUM_THREADS"] = "1"
 
+import sys, pathlib
+_project_root = str(pathlib.Path(__file__).parent.parent.absolute())
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from core.model import EchoTraceResNet, FocalLoss, get_optimizer
 from core.preprocess import ASVDataset, WaveFakeDataset, InTheWildDataset, LibriSpeechDataset, build_combined_dataset
 
