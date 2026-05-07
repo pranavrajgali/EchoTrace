@@ -92,7 +92,7 @@ def get_logger(rank):
 # ── DDP setup / teardown ──────────────────────────────────────
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"]      = "localhost"
-    os.environ["MASTER_PORT"]      = "12365"
+    os.environ["MASTER_PORT"]      = "12366"
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"]  = "1"
     dist.init_process_group(
