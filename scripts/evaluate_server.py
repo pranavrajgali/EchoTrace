@@ -568,6 +568,8 @@ def main():
     parser = argparse.ArgumentParser(description='EchoTrace comprehensive evaluation')
     parser.add_argument('--checkpoint', required=True, help='Path to checkpoint or epoch number (e.g. 6 → checkpoint_epoch_06.pth)')
     parser.add_argument('--tag', default='eval', help='Tag for output folder')
+    parser.add_argument('--mode', type=int, choices=[1, 2], default=None,
+                        help='1 = Quick (ASVspoof Dev + InTheWild Test), 2 = Full (+ ASVspoof Eval)')
     parser.add_argument('--asv_root', default='/home/jovyan/work/data/LA/LA', 
                         help='Root of ASVspoof2019 LA folder')
     parser.add_argument('--itw_test_root', default='/home/jovyan/work/data/release_in_the_wild/release_in_the_wild/test',
@@ -577,6 +579,26 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.5, help='Decision threshold')
     
     args = parser.parse_args()
+    
+    # ── Mode selection ──
+    if args.mode is None:
+        print("\n" + "=" * 60)
+        print("  EchoTrace Evaluation — Select Mode")
+        print("=" * 60)
+        print("  [1] Quick  — ASVspoof Dev + InTheWild Test     (~10-15 min)")
+        print("  [2] Full   — ASVspoof Dev + Eval + InTheWild   (~35-40 min)")
+        print("=" * 60)
+        while True:
+            choice = input("\n  Enter mode (1 or 2): ").strip()
+            if choice in ("1", "2"):
+                eval_mode = int(choice)
+                break
+            print("  Invalid input. Please enter 1 or 2.")
+    else:
+        eval_mode = args.mode
+    
+    include_asv_eval = (eval_mode == 2)
+    mode_label = "Full (Dev + Eval + ITW)" if include_asv_eval else "Quick (Dev + ITW)"
     
     # Setup
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -593,11 +615,12 @@ def main():
         print(f"❌ Checkpoint not found: {checkpoint_path}")
         return
     
-    print(f"[EchoTrace Evaluation]")
+    print(f"\n[EchoTrace Evaluation]")
     print(f"  Checkpoint: {checkpoint_path}")
-    print(f"  Threshold: {args.threshold}")
-    print(f"  Device: {device}")
-    print(f"  Output: {output_dir}")
+    print(f"  Mode      : {mode_label}")
+    print(f"  Threshold : {args.threshold}")
+    print(f"  Device    : {device}")
+    print(f"  Output    : {output_dir}")
     print()
     
     # Load model
@@ -605,9 +628,12 @@ def main():
     model = load_model(checkpoint_path, device)
     checkpoint_name = Path(checkpoint_path).name
     
-    # Load datasets
+    # ── Build dataset list based on mode ──
+    eval_sets = []
+    
     print("\nLoading datasets...")
     
+    # Always: ASVspoof Dev
     print("  ASVspoof Dev:")
     asv_dev_files, asv_dev_labels, asv_dev_systems = parse_asv_protocol(
         Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt",
@@ -615,32 +641,36 @@ def main():
     )
     asv_dev_dataset = SimpleAudioDataset(asv_dev_files, asv_dev_labels, "ASVspoof Dev")
     asv_dev_loader = torch.utils.data.DataLoader(asv_dev_dataset, batch_size=BATCH_SIZE, num_workers=8)
+    eval_sets.append(("ASVspoof Dev", asv_dev_loader, asv_dev_labels, asv_dev_systems))
     
-    print("  ASVspoof Eval:")
-    asv_eval_files, asv_eval_labels, asv_eval_systems = parse_asv_protocol(
-        Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
-        Path(args.asv_root) / "ASVspoof2019_LA_eval/flac"
-    )
-    asv_eval_dataset = SimpleAudioDataset(asv_eval_files, asv_eval_labels, "ASVspoof Eval")
-    asv_eval_loader = torch.utils.data.DataLoader(asv_eval_dataset, batch_size=BATCH_SIZE, num_workers=8)
+    # Mode 2 only: ASVspoof Eval
+    asv_eval_systems = None
+    if include_asv_eval:
+        print("  ASVspoof Eval:")
+        asv_eval_files, asv_eval_labels, asv_eval_systems = parse_asv_protocol(
+            Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
+            Path(args.asv_root) / "ASVspoof2019_LA_eval/flac"
+        )
+        asv_eval_dataset = SimpleAudioDataset(asv_eval_files, asv_eval_labels, "ASVspoof Eval")
+        asv_eval_loader = torch.utils.data.DataLoader(asv_eval_dataset, batch_size=BATCH_SIZE, num_workers=8)
+        eval_sets.append(("ASVspoof Eval", asv_eval_loader, asv_eval_labels, asv_eval_systems))
+    else:
+        print("  ASVspoof Eval: ⏭ SKIPPED (Quick mode)")
     
+    # Always: InTheWild Test
     print("  InTheWild Test:")
     itw_files, itw_labels = load_inthe_wild_test(args.itw_test_root)
     itw_dataset = SimpleAudioDataset(itw_files, itw_labels, "InTheWild Test")
     itw_loader = torch.utils.data.DataLoader(itw_dataset, batch_size=BATCH_SIZE, num_workers=8)
+    eval_sets.append(("InTheWild Test", itw_loader, itw_labels, None))
     
-    # Evaluate
+    # ── Evaluate ──
     print("\nEvaluating...\n")
     
     results = {}
-    
     asv_eval_attacks = None
     
-    for dataset_name, loader, labels, systems in [
-        ("ASVspoof Dev", asv_dev_loader, asv_dev_labels, asv_dev_systems),
-        ("ASVspoof Eval", asv_eval_loader, asv_eval_labels, asv_eval_systems),
-        ("InTheWild Test", itw_loader, itw_labels, None),
-    ]:
+    for dataset_name, loader, labels, systems in eval_sets:
         y_true, y_score = evaluate_dataset(model, loader, device, dataset_name)
         metrics = compute_metrics(y_true, y_score, threshold=args.threshold)
         
@@ -673,7 +703,7 @@ def main():
         print(f"    Fake Recall: {metrics['fake_recall']:.2f}%")
         print()
     
-    # Generate HTTP report
+    # Generate HTML report
     print("Generating HTML report...")
     html_path = output_dir / "report.html"
     generate_html_report(results, html_path, checkpoint_name, asv_eval_attacks=asv_eval_attacks)
@@ -685,7 +715,7 @@ def main():
         json.dump(results, f, indent=2)
     print(f"✅ Metrics saved to: {json_path}")
     
-    print("\n✅ Evaluation complete!")
+    print(f"\n✅ Evaluation complete! (Mode: {mode_label})")
 
 
 if __name__ == "__main__":
