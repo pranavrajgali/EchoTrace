@@ -44,7 +44,13 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from PIL import Image
 
-# EchoTrace
+# EchoTrace — path setup for running from scripts/ directory
+import sys
+import pathlib
+_project_root = str(pathlib.Path(__file__).parent.parent.absolute())
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from core.model import EchoTraceResNet
 from core.preprocess import load_audio, build_feature_image, extract_scalar_features
 
