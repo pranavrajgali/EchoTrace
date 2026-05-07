@@ -50,7 +50,7 @@ BATCH_PER_GPU  = 32
 
 # ── TRAINING CONFIG ──────────────────────────────────────────
 NUM_EPOCHS         = 10
-AUGMENT_PROB       = 0.4
+AUGMENT_PROB       = 0.5
 
 # Dataset subset sizes (Balanced 50/50 Split — verified against on-disk counts)
 # Real:  ASV 2,580 + WaveFake 18,100 + ITW 12,500 + LibriSpeech 38,000 = 71,180
@@ -250,7 +250,14 @@ def evaluate(model, val_loader, device, criterion):
 # ── Training process ──────────────────────────────────────────
 def train(rank, world_size):
     setup(rank, world_size)
-    torch.manual_seed(42 + rank)
+    # ── CRITICAL: Seed ALL RNGs identically across ranks ──
+    # Dataset constructors use Python's random.shuffle(), so we must seed
+    # Python's random module too. Otherwise each rank builds a different
+    # file list order, and DistributedSampler partitions different data.
+    import random as _random
+    _random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
     device = torch.device(f"cuda:{rank}")
     logger = get_logger(rank)
 
@@ -270,6 +277,7 @@ def train(rank, world_size):
         logger.info(f"Trainable params: {trainable:,} / {total:,}")
 
     torch.backends.cudnn.benchmark = True # Free CNN acceleration
+    model     = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model     = DDP(model, device_ids=[rank], find_unused_parameters=False)
     # FocalLoss with alpha=0.5 for balanced 50/50 dataset — focuses on hard examples
     criterion = FocalLoss(alpha=0.5, gamma=2.0)
@@ -373,12 +381,17 @@ def train(rank, world_size):
 
         scheduler.step()
 
+        # ── Global loss reduction: average across all ranks ──
+        loss_tensor = torch.tensor([epoch_loss], device=device)
+        if world_size > 1:
+            dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+        global_avg_loss = loss_tensor.item() / (len(loader) * world_size)
+
         if rank == 0:
-            avg     = epoch_loss / len(loader)
             elapsed = (time.time() - t0) / 60
             
             logger.info(
-                f"[epoch {epoch+1:02d}] train_loss={avg:.4f} | "
+                f"[epoch {epoch+1:02d}] train_loss={global_avg_loss:.4f} | "
                 f"time={elapsed:.1f}m"
             )
 

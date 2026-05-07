@@ -542,7 +542,7 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
             prob = torch.sigmoid(output).item()
 
         timestamp = start / SR
-        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.6 else "BONAFIDE"))
+        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.5 else "BONAFIDE"))
 
     return results
 
@@ -1029,13 +1029,13 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
                 weights = np.exp(valid_probs / 2.5)
                 weights = weights / weights.sum()
                 
-                # 3. Apply -0.10 Calibration Offset to account for local mic bias
+                # 3. Weighted average (no calibration offset — keep consistent with eval pipeline)
                 raw_final = float(np.dot(weights, valid_probs))
-                final_prob = max(0.0, min(1.0, raw_final - 0.10))
+                final_prob = max(0.0, min(1.0, raw_final))
             else:
                 final_prob = 0.0 # Purely clean/silent
                 
-            verdict = "SPOOF" if final_prob > 0.6 else "BONAFIDE"
+            verdict = "SPOOF" if final_prob > 0.5 else "BONAFIDE"
             confidence = final_prob if verdict == "SPOOF" else 1.0 - final_prob
             analysis_result = {
                 "result": verdict,
