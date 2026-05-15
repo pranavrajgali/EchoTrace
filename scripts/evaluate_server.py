@@ -741,9 +741,9 @@ def main():
     asv_dev_loader = torch.utils.data.DataLoader(asv_dev_dataset, batch_size=BATCH_SIZE, num_workers=8)
     eval_sets.append(("ASVspoof Dev", asv_dev_loader, asv_dev_labels, asv_dev_systems))
     
-    # Mode 2 only: ASVspoof Eval
+    # Mode 2 and 5: ASVspoof Eval
     asv_eval_systems = None
-    if include_asv_eval:
+    if eval_mode in (2, 5):
         print("  ASVspoof Eval:")
         asv_eval_files, asv_eval_labels, asv_eval_systems = parse_asv_protocol(
             Path(args.asv_root) / "ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt",
