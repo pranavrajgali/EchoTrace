@@ -64,26 +64,35 @@ We extract physical features that capture the unique biological fingerprint of a
    cd EchoTrace
    ```
 
-2. **Install Dependencies**
+2. **Set Up a Virtual Environment**
+   ```bash
+   python -m venv .venv
+   # Windows
+   .venv\Scripts\activate
+   # macOS or Linux
+   source .venv/bin/activate
+   ```
+
+3. **Install Dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Verify Model Weights**
+4. **Verify Model Weights**
    Ensure `ensemble_model.pth` is present in the root directory.
 
 ---
 
 ## 🎙️ Usage
 
-### Interactive Web Dashboard
+### Interactive Web Dashboard (Streamlit)
 The primary interface for uploading audio, live recording, and viewing SHAP explanations.
 ```bash
 streamlit run streamlit_app.py
 ```
 
 ### High-Performance Audit (Server)
-Run the 5-mode stress test to benchmark the model against all forensic datasets:
+Run the 5-mode stress test to benchmark the model against all forensic datasets (ASVspoof, In-The-Wild, WaveFake, LibriSpeech):
 ```bash
 python scripts/evaluate_server.py --checkpoint ensemble_model.pth --mode 5
 ```
@@ -96,13 +105,30 @@ python tests/single_example_report_generator.py
 
 ---
 
-## 📂 Documentation
-Full technical deep-dives are available in the `docs/` folder:
-*   [**Technical Report**](docs/EchoTrace_Technical_Report.md): Detailed architectural breakdown.
-*   [**Training Guide**](docs/TRAINING_GUIDE.md): DDP pipeline configuration and resume logic.
-*   [**Design System**](docs/design.md): CSS tokens and branding specifications.
+## 📂 Project Structure
+```text
+.
+├── streamlit_app.py         # Main Web Application UI
+├── ensemble_model.pth       # Pre-trained Model Weights
+├── core/                    # Engine and Intelligence
+│   ├── model.py             # ResNet-50 Architecture and Biometric MLP
+│   ├── preprocess.py        # DDP Datasets and Audio Pipelines
+│   └── inference.py         # Signal Processing and Prediction
+├── scripts/                 # Execution Pipelines
+│   ├── train_ddp.py         # Multi-GPU Training Script
+│   ├── evaluate_server.py   # 5-Mode Developer Audit Suite
+│   └── evaluate_pc.py       # Local Performance Evaluation
+├── docs/                    # Technical Documentation
+│   ├── EchoTrace_Technical_Report.md  # Architectural Breakdown
+│   ├── TRAINING_GUIDE.md    # Guide to running the DDP Pipeline
+│   └── FUTURE_CHANGES.md    # Development Roadmap
+├── tests/
+│   └── single_example_report_generator.py  # Standalone Forensic Script
+├── utils/                   # Shared Utilities
+└── requirements.txt         # Project Dependencies
+```
 
 ---
 
 **Built by BackProp Bandits**  
-*EchoTrace is a forensic tool intended for investigative and educational purposes.*
+*EchoTrace is a forensic tool intended for investigative and educational purposes. While highly accurate, no detection system is infallible. Always use EchoTrace results as one part of a broader verification workflow.*
