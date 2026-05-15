@@ -653,8 +653,8 @@ def main():
     parser = argparse.ArgumentParser(description='EchoTrace comprehensive evaluation')
     parser.add_argument('--checkpoint', required=True, help='Path to checkpoint or epoch number (e.g. 6 → checkpoint_epoch_06.pth)')
     parser.add_argument('--tag', default='eval', help='Tag for output folder')
-    parser.add_argument('--mode', type=int, choices=[1, 2], default=None,
-                        help='1 = Quick (ASVspoof Dev + InTheWild Test), 2 = Full (+ ASVspoof Eval)')
+    parser.add_argument('--mode', type=int, choices=[1, 2, 3, 4, 5], default=None,
+                        help='1=Quick, 2=ASV-Full, 3=Real-Only, 4=Cross-Gen, 5=Stress-Test')
     parser.add_argument('--asv_root', default='/home/jovyan/work/data/LA/LA', 
                         help='Root of ASVspoof2019 LA folder')
     parser.add_argument('--itw_test_root', default='/home/jovyan/work/data/release_in_the_wild/release_in_the_wild/test',
