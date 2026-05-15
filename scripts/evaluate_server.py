@@ -57,7 +57,7 @@ from core.preprocess import load_audio, build_feature_image, extract_scalar_feat
 # ── Hyperparameters ──
 SR = 16000
 DURATION = 4.0
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 
 # ── ImageNet Normalization (MUST match training) ──
 # Training uses these exact statistics from torchvision.models
