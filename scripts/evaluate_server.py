@@ -452,32 +452,38 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
     roc_plot = fig_to_base64(fig)
     
     # ── Plot 2: Score Distributions ──
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    n_datasets = len(results_dict)
+    n_cols = min(3, n_datasets)
+    n_rows = (n_datasets + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    if n_datasets == 1: axes = [axes]
+    axes = np.array(axes).flatten()
+    
     for idx, (dataset_name, metrics) in enumerate(results_dict.items()):
         ax = axes[idx]
         y_score = np.array(metrics['y_score'])
         y_true = np.array(metrics['y_true'])
         
         ax.hist(y_score[y_true == 0], bins=30, alpha=0.6, label='Real', color='blue')
-        ax.hist(y_score[y_true == 1], bins=30, alpha=0.6, label='Fake', color='red')
+        if np.any(y_true == 1):
+            ax.hist(y_score[y_true == 1], bins=30, alpha=0.6, label='Fake', color='red')
+            
         ax.set_xlabel('Model Confidence')
         ax.set_ylabel('Count')
         ax.set_title(f'{dataset_name}\n(n={len(y_score)})')
         ax.legend()
         ax.grid(True, alpha=0.3)
     
-    # Handle layouts for more than 3 plots
-    if len(results_dict) > 3:
-        plt.tight_layout()
-    else:
-        plt.tight_layout()
+    # Hide empty subplots
+    for i in range(n_datasets, len(axes)):
+        axes[i].axis('off')
+        
+    plt.tight_layout()
     dist_plot = fig_to_base64(fig)
     
     # ── Plot 3: Confusion Matrices ──
-    n_cols = min(3, len(results_dict))
-    n_rows = (len(results_dict) + n_cols - 1) // n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
-    if len(results_dict) == 1: axes = [axes]
+    if n_datasets == 1: axes = [axes]
     axes = np.array(axes).flatten()
     
     for idx, (dataset_name, metrics) in enumerate(results_dict.items()):
