@@ -246,17 +246,29 @@ def load_librispeech_eval(libri_root):
 
 # ── WaveFake Folder Parsing ──
 def load_wavefake_eval(wavefake_root):
-    """Load WaveFake test set."""
+    """Load WaveFake test set with vocoder tracking."""
     wavefake_root = Path(wavefake_root)
     
     # Real
     real_files = glob(str(wavefake_root / "the-LJSpeech-1.1" / "wavs" / "*.wav"))
+    real_systems = ["bonafide"] * len(real_files)
     
     # Fake
     fake_files = glob(str(wavefake_root / "generated_audio" / "**" / "*.wav"), recursive=True)
+    fake_systems = []
+    for f in fake_files:
+        # Path is .../generated_audio/vocoder_name/filename.wav
+        parts = Path(f).parts
+        try:
+            gen_idx = parts.index("generated_audio")
+            vocoder = parts[gen_idx + 1]
+            fake_systems.append(vocoder)
+        except (ValueError, IndexError):
+            fake_systems.append("unknown_fake")
     
     file_list = real_files + fake_files
     label_list = [0] * len(real_files) + [1] * len(fake_files)
+    system_list = real_systems + fake_systems
     
     # Apply subset sampling
     if len(file_list) > 2000:
@@ -264,10 +276,11 @@ def load_wavefake_eval(wavefake_root):
         indices = random.sample(range(len(file_list)), 2000)
         file_list = [file_list[i] for i in indices]
         label_list = [label_list[i] for i in indices]
+        system_list = [system_list[i] for i in indices]
         print(f"  Sampled down to 2000 for fast eval")
         
     print(f"  Loaded WaveFake samples (Total: {len(file_list)})")
-    return file_list, label_list
+    return file_list, label_list, system_list
 
 
 # ── Model Loading ──
@@ -387,41 +400,39 @@ ATTACK_INFO = {
     "A19": ("VC", "spectral filtering"),
 }
 
-def compute_per_attack_metrics(y_true, y_score, system_list, threshold=0.5):
+def compute_per_system_metrics(y_true, y_score, system_list, threshold=0.5, bonafide_label="-"):
     """Compute EER and fake recall per attack type (vs bonafide)."""
-    attacks = {}
+    systems_data = {}
     system_array = np.array(system_list)
-    bonafide_mask = system_array == "-"
+    bonafide_mask = system_array == bonafide_label
     
-    for i, system_id in enumerate(set(system_list)):
-        # Skip bonafide (no real attacks to compare)
-        if system_id == "-":
+    unique_systems = sorted(list(set(system_list)))
+    for system_id in unique_systems:
+        if system_id == bonafide_label:
             continue
         
         # Include both this attack AND bonafide samples for proper EER
         attack_mask = system_array == system_id
         combined_mask = bonafide_mask | attack_mask
         
-        y_true_attack = y_true[combined_mask]
-        y_score_attack = y_score[combined_mask]
+        y_true_sub = y_true[combined_mask]
+        y_score_sub = y_score[combined_mask]
         
-        # Skip if too few samples
-        if len(y_true_attack) < 10:
+        if len(y_true_sub) < 5:
             continue
         
-        y_pred_attack = (y_score_attack > threshold).astype(int)
+        y_pred_sub = (y_score_sub > threshold).astype(int)
+        eer = compute_eer(y_true_sub, y_score_sub)
+        fake_total = (y_true_sub == 1).sum()
+        fake_recall = (y_pred_sub[y_true_sub == 1] == 1).sum() / fake_total * 100 if fake_total > 0 else 0
         
-        eer = compute_eer(y_true_attack, y_score_attack)
-        fake_total = (y_true_attack == 1).sum()
-        fake_recall = (y_pred_attack[y_true_attack == 1] == 1).sum() / fake_total * 100 if fake_total > 0 else 0
-        
-        attacks[system_id] = {
+        systems_data[system_id] = {
             'eer': eer,
             'fake_recall': fake_recall,
-            'n_samples': len(y_true_attack)
+            'n_samples': int(fake_total)
         }
     
-    return attacks
+    return systems_data
 
 
 # ── HTML Report Generation ──
@@ -626,7 +637,6 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
         html_content += f"""    
     <div class="section">
         <h2>Per-Attack Analysis (ASVspoof Eval)</h2>
-        <p><em>EER computed on attack samples vs bonafide baselines. TTS = Text-to-Speech, VC = Voice Conversion.</em></p>
         <table>
             <tr>
                 <th>Attack ID</th>
@@ -640,6 +650,34 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
     </div>
 """
     
+    # Add per-vocoder analysis if available (WaveFake)
+    wf_results = results_dict.get("WaveFake", {})
+    wf_systems = wf_results.get("per_system")
+    if wf_systems:
+        wf_rows = ""
+        for vocoder, data in sorted(wf_systems.items()):
+            eer = data['eer']
+            eer_display = f"{eer:.2f}%" if eer is not None else "N/A"
+            eer_class = 'metric-good' if (eer is not None and eer < 5) else ('metric-warning' if (eer is not None and eer < 10) else 'metric-bad')
+            wf_rows += f"""
+            <tr>
+                <td><strong>{vocoder}</strong></td>
+                <td>{data['n_samples']}</td>
+                <td class="{eer_class}">{eer_display}</td>
+                <td>{data['fake_recall']:.2f}%</td>
+            </tr>
+"""
+        html_content += f"""    
+    <div class="section">
+        <h2>Per-Vocoder Analysis (WaveFake)</h2>
+        <p><em>Breakdown of detection performance across different GAN/Neural vocoders.</em></p>
+        <table>
+            <tr><th>Vocoder</th><th>Samples</th><th>EER</th><th>Fake Recall</th></tr>
+            {wf_rows}
+        </table>
+    </div>
+"""
+
     html_content += """    
     <div class="footer">
         <p>BackProp Bandits | Udhbhav 2026 Hackathon</p>
@@ -780,10 +818,10 @@ def main():
     # WaveFake: Mode 4 or 5
     if eval_mode in (4, 5):
         print("  WaveFake Test:")
-        wf_files, wf_labels = load_wavefake_eval(args.wavefake_root)
+        wf_files, wf_labels, wf_systems = load_wavefake_eval(args.wavefake_root)
         wf_dataset = SimpleAudioDataset(wf_files, wf_labels, "WaveFake")
         wf_loader = torch.utils.data.DataLoader(wf_dataset, batch_size=BATCH_SIZE, num_workers=8)
-        eval_sets.append(("WaveFake", wf_loader, wf_labels, None))
+        eval_sets.append(("WaveFake", wf_loader, wf_labels, wf_systems))
     
     # ── Evaluate ──
     print("\nEvaluating...\n")
@@ -795,9 +833,13 @@ def main():
         y_true, y_score = evaluate_dataset(model, loader, device, dataset_name)
         metrics = compute_metrics(y_true, y_score, threshold=args.threshold)
         
-        # Per-attack analysis for ASVspoof Eval
+        # Per-system analysis
+        per_system_metrics = None
         if dataset_name == "ASVspoof Eval" and systems:
-            asv_eval_attacks = compute_per_attack_metrics(y_true, y_score, systems, threshold=args.threshold)
+            asv_eval_attacks = compute_per_system_metrics(y_true, y_score, systems, threshold=args.threshold, bonafide_label="-")
+            per_system_metrics = asv_eval_attacks
+        elif dataset_name == "WaveFake" and systems:
+            per_system_metrics = compute_per_system_metrics(y_true, y_score, systems, threshold=args.threshold, bonafide_label="bonafide")
         
         results[dataset_name] = {
             'n_samples': len(y_true),
@@ -814,7 +856,7 @@ def main():
             'y_true': y_true.tolist(),
             'y_score': y_score.tolist(),
             'y_pred': metrics['y_pred'].tolist(),
-            'per_attack': asv_eval_attacks if dataset_name == "ASVspoof Eval" else None
+            'per_system': per_system_metrics
         }
         
         print(f"  {dataset_name}:")
