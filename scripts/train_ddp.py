@@ -55,7 +55,7 @@ BATCH_PER_GPU  = 32
 
 # ── TRAINING CONFIG ──────────────────────────────────────────
 NUM_EPOCHS         = 10
-AUGMENT_PROB       = 0.5
+AUGMENT_PROB       = 0.1
 
 # Dataset subset sizes (Balanced 50/50 Split — verified against on-disk counts)
 # Real:  ASV 2,580 + WaveFake 18,100 + ITW 12,500 + LibriSpeech 38,000 = 71,180
@@ -122,7 +122,7 @@ def get_loader(rank, world_size, logger):
     )
     librispeech = LibriSpeechDataset(
         data_dir=LIBRISPEECH_DIR, subset_size=LIBRISPEECH_SUBSET,
-        augment=True, augment_prob=0.5
+        augment=True, augment_prob=0.1
     )
 
     dataset = build_combined_dataset(asv, wf, itw, librispeech)

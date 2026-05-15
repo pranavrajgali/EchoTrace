@@ -1,5 +1,5 @@
-# EchoTrace Master Technical Briefing (10 AM Demo Prep)
-**Version:** 3.0 (April 10th - Live DDP Training Results)
+# EchoTrace Master Technical Report
+**Version:** 4.0 (Production Release — Final DDP Training Results)
 
 ---
 
@@ -46,11 +46,12 @@ Unlike standard black-box AI, EchoTrace uses a hybrid approach:
 ## ⚙️ 3. The Infrastructure (4-GPU DDP)
 We are training on a heavy-duty cluster:
 - **Hardware:** 4× NVIDIA GeForce RTX 2080 Ti GPUs.
-- **Dataset:** 240,480 samples (Full ASVspoof, WaveFake, InTheWild, LibriSpeech).
+- **Dataset:** 220,380 samples (ASVspoof: 25,380 | WaveFake: 70,000 | InTheWild: 25,000 | LibriSpeech: 100,000).
+- **Class Split:** ~47% Real (Bonafide) / ~53% Fake (Spoof).
 - **Backend:** Distributed Data Parallel (DDP) using the NCCL backend.
 - **Speed:** ~6 seconds per batch (128 samples per batch across 4 GPUs).
 - **Optimization:** Automatic Mixed Precision (AMP/float16) for 2x faster math.
-- **Worker Configuration:** 24 parallel CPU workers (6 per GPU) using `persistent_workers=True` to eliminate data loading overhead between epochs.
+- **Worker Configuration:** 16 parallel CPU workers (4 per GPU) using `persistent_workers=True` to eliminate data loading overhead.
 
 ---
 

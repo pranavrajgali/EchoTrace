@@ -20,7 +20,12 @@
 
 ## Performance & Evaluation
 
-The underlying model has been rigorously validated across diverse datasets (ASVspoof, WaveFake, InTheWild, LibriSpeech) containing over 240,480 samples.
+The underlying model has been rigorously validated across a balanced dataset containing exactly **220,380 samples**:
+* **ASVspoof 2019**: 25,380 samples
+* **WaveFake**: 70,000 samples
+* **In-The-Wild**: 25,000 samples
+* **LibriSpeech**: 100,000 samples (Real Anchor)
+
 * **ASVspoof 2019 Dev (Standard Lab Test)**: EER: 1.22%, ROC-AUC: 0.9994, Balanced Accuracy: 98.29%
 * **In-The-Wild (Real-World Evidence Test)**: EER: 0.86%, ROC-AUC: 0.9992, Balanced Accuracy: 99.24%
 * **Overall Deepfake Recall**: 99.7%

@@ -55,7 +55,7 @@ class AudioAugmenter:
                     noise = np.pad(noise, (0, len(audio) - len(noise)), mode='reflect')
                 else:
                     noise = noise[:len(audio)]
-                snr_factor = random.uniform(0.01, 0.1)
+                snr_factor = random.uniform(0.005, 0.03)
                 return audio + noise * snr_factor
             except Exception:
                 pass

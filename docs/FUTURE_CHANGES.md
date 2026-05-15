@@ -8,13 +8,6 @@ Tracked roadmap for upcoming work on the EchoTrace pipeline.
 
 Unify the decision threshold so that preprocessing, model output, and training all operate on the same calibrated scale. Currently the 0.5 sigmoid cutoff is used at inference but is not validated against the operating point seen during training.
 
-> [!IMPORTANT]
-> **Mentor guidance (May 2026):** A deepfake audio detector should ideally **not have a hard decision threshold at all.** The model should output a continuous spoof probability score and let the downstream consumer (user, API caller, or forensic analyst) decide their own operating point based on their tolerance for false positives vs false negatives. The current `> 0.5` threshold is a temporary convenience for the demo UI and evaluation scripts. Future versions should:
-> - Return only the raw probability (0.0–1.0) as the primary output
-> - Let the user set their own threshold via a slider in the Streamlit UI
-> - Report EER-optimal threshold in evaluation reports as a *recommendation*, not a hard cutoff
-> - Remove all hardcoded `"SPOOF" if prob > X` logic from the inference pipeline
-
 - [ ] Audit every location where a threshold is applied (preprocessing clipping, sigmoid cutoff in `evaluate()`, Streamlit UI confidence display) and document the current values
 - [ ] Compute the optimal threshold on the validation set using the EER operating point from the ROC curve after training
 - [ ] Store the calibrated threshold in the saved checkpoint alongside model weights so it travels with the model
@@ -23,7 +16,6 @@ Unify the decision threshold so that preprocessing, model output, and training a
 - [ ] Update `scripts/evaluate_pc.py` and `scripts/evaluate_server.py` to use the stored threshold for consistent evaluation
 - [ ] Add a config field or CLI flag to override the threshold at inference time for sensitivity tuning
 - [ ] Write a unit test that asserts the threshold value round-trips correctly through save/load
-- [ ] **Long-term:** Remove all hard thresholds from the inference pipeline entirely; return only continuous scores
 
 ---
 
