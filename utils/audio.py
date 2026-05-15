@@ -144,7 +144,7 @@ def _run_vad(audio: np.ndarray, sr: int = 16000) -> float:
     # ── Dynamic energy threshold ──
     # Use the 15th percentile as floor estimate + scale factor
     energy_floor = np.percentile(rms, 15)
-    energy_threshold = max(energy_floor * 4.0, np.mean(rms) * 0.35)
+    energy_threshold = max(energy_floor * 3.0, np.mean(rms) * 0.25)
 
     # ── ZCR bounds for speech ──
     # Human speech typically has ZCR between 0.02 and 0.25

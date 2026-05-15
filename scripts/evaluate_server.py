@@ -175,7 +175,7 @@ def parse_asv_protocol(protocol_path, audio_root):
             
             file_id = parts[1]
             key = parts[4]
-            system_id = parts[2]
+            system_id = parts[3]
             
             label = 0 if key == "bonafide" else 1
             audio_path = Path(audio_root) / f"{file_id}.flac"
@@ -186,6 +186,16 @@ def parse_asv_protocol(protocol_path, audio_root):
                 system_list.append(system_id)
     
     print(f"  Loaded {len(file_list)} samples from protocol")
+    
+    # Apply subset sampling
+    if len(file_list) > 2000:
+        import random
+        indices = random.sample(range(len(file_list)), 2000)
+        file_list = [file_list[i] for i in indices]
+        label_list = [label_list[i] for i in indices]
+        system_list = [system_list[i] for i in indices]
+        print(f"  Sampled down to 2000 for fast eval")
+        
     return file_list, label_list, system_list
 
 
@@ -203,6 +213,60 @@ def load_inthe_wild_test(test_root):
     label_list = [0] * len(real_files) + [1] * len(fake_files)
     
     print(f"  Loaded {len(real_files)} real + {len(fake_files)} fake samples")
+    
+    file_list = real_files + fake_files
+    label_list = [0] * len(real_files) + [1] * len(fake_files)
+
+    # Apply subset sampling
+    if len(file_list) > 2000:
+        import random
+        indices = random.sample(range(len(file_list)), 2000)
+        file_list = [file_list[i] for i in indices]
+        label_list = [label_list[i] for i in indices]
+        print(f"  Sampled down to 2000 for fast eval")
+    
+    return file_list, label_list
+
+# ── LibriSpeech Folder Parsing ──
+def load_librispeech_eval(libri_root):
+    """Load LibriSpeech for clean real-only baseline."""
+    libri_root = Path(libri_root)
+    files = list(libri_root.rglob("*.flac"))
+    
+    # Sample down to 2000 for evaluation to keep it fast
+    import random
+    if len(files) > 2000:
+        files = random.sample(files, 2000)
+        
+    file_list = [str(f) for f in files]
+    label_list = [0] * len(file_list)
+    
+    print(f"  Loaded {len(file_list)} clean real samples from LibriSpeech")
+    return file_list, label_list
+
+# ── WaveFake Folder Parsing ──
+def load_wavefake_eval(wavefake_root):
+    """Load WaveFake test set."""
+    wavefake_root = Path(wavefake_root)
+    
+    # Real
+    real_files = glob(str(wavefake_root / "the-LJSpeech-1.1" / "wavs" / "*.wav"))
+    
+    # Fake
+    fake_files = glob(str(wavefake_root / "generated_audio" / "**" / "*.wav"), recursive=True)
+    
+    file_list = real_files + fake_files
+    label_list = [0] * len(real_files) + [1] * len(fake_files)
+    
+    # Apply subset sampling
+    if len(file_list) > 2000:
+        import random
+        indices = random.sample(range(len(file_list)), 2000)
+        file_list = [file_list[i] for i in indices]
+        label_list = [label_list[i] for i in indices]
+        print(f"  Sampled down to 2000 for fast eval")
+        
+    print(f"  Loaded WaveFake samples (Total: {len(file_list)})")
     return file_list, label_list
 
 
@@ -401,17 +465,27 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
         ax.set_title(f'{dataset_name}\n(n={len(y_score)})')
         ax.legend()
         ax.grid(True, alpha=0.3)
-    plt.tight_layout()
+    
+    # Handle layouts for more than 3 plots
+    if len(results_dict) > 3:
+        plt.tight_layout()
+    else:
+        plt.tight_layout()
     dist_plot = fig_to_base64(fig)
     
     # ── Plot 3: Confusion Matrices ──
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    n_cols = min(3, len(results_dict))
+    n_rows = (len(results_dict) + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    if len(results_dict) == 1: axes = [axes]
+    axes = np.array(axes).flatten()
+    
     for idx, (dataset_name, metrics) in enumerate(results_dict.items()):
         ax = axes[idx]
         cm = np.array(metrics['cm'])
         
         # Normalize for visualization
-        cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+        cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True) if cm.sum(axis=1, keepdims=True).all() else cm.astype(float)
         
         im = ax.imshow(cm_norm, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
         ax.set_xticks([0, 1])
@@ -421,11 +495,16 @@ def generate_html_report(results_dict, output_path, checkpoint_name, asv_eval_at
         ax.set_title(f'{dataset_name}')
         
         # Add text
-        for i in range(2):
-            for j in range(2):
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
                 text = ax.text(j, i, f'{cm[i, j]}\n({cm_norm[i, j]:.1%})',
                               ha="center", va="center", color="black", fontsize=9)
         plt.colorbar(im, ax=ax)
+    
+    # Hide empty subplots
+    for i in range(len(results_dict), len(axes)):
+        axes[i].axis('off')
+        
     plt.tight_layout()
     cm_plot = fig_to_base64(fig)
     
@@ -580,6 +659,10 @@ def main():
                         help='Root of ASVspoof2019 LA folder')
     parser.add_argument('--itw_test_root', default='/home/jovyan/work/data/release_in_the_wild/release_in_the_wild/test',
                         help='Path to InTheWild test folder')
+    parser.add_argument('--libri_root', default='/home/jovyan/work/data/LibriSpeech',
+                        help='Path to LibriSpeech root')
+    parser.add_argument('--wavefake_root', default='/home/jovyan/work/data/wavefake-test/wavefake-test',
+                        help='Path to WaveFake root')
     parser.add_argument('--output_dir', default='/home/jovyan/work/EchoTrace/eval_results',
                         help='Output directory for results')
     parser.add_argument('--threshold', type=float, default=0.5, help='Decision threshold')
@@ -591,20 +674,29 @@ def main():
         print("\n" + "=" * 60)
         print("  EchoTrace Evaluation — Select Mode")
         print("=" * 60)
-        print("  [1] Quick  — ASVspoof Dev + InTheWild Test     (~10-15 min)")
-        print("  [2] Full   — ASVspoof Dev + Eval + InTheWild   (~35-40 min)")
+        print("  [1] Quick      — ASVspoof Dev + ITW Test")
+        print("  [2] ASV-Full   — ASVspoof Dev + Eval + ITW")
+        print("  [3] Real-Only  — LibriSpeech (FPR Check)")
+        print("  [4] Cross-Gen  — WaveFake Test")
+        print("  [5] Stress-Test — ALL Above")
         print("=" * 60)
         while True:
-            choice = input("\n  Enter mode (1 or 2): ").strip()
-            if choice in ("1", "2"):
+            choice = input("\n  Enter mode (1-5): ").strip()
+            if choice in ("1", "2", "3", "4", "5"):
                 eval_mode = int(choice)
                 break
-            print("  Invalid input. Please enter 1 or 2.")
+            print("  Invalid input. Please enter 1-5.")
     else:
         eval_mode = args.mode
     
-    include_asv_eval = (eval_mode == 2)
-    mode_label = "Full (Dev + Eval + ITW)" if include_asv_eval else "Quick (Dev + ITW)"
+    mode_map = {
+        1: "Quick (Dev + ITW)",
+        2: "ASV-Full (Dev + Eval + ITW)",
+        3: "Real-Only (LibriSpeech)",
+        4: "Cross-Gen (WaveFake)",
+        5: "Stress-Test (FULL SUITE)"
+    }
+    mode_label = mode_map[eval_mode]
     
     # Setup
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -663,12 +755,29 @@ def main():
     else:
         print("  ASVspoof Eval: ⏭ SKIPPED (Quick mode)")
     
-    # Always: InTheWild Test
-    print("  InTheWild Test:")
-    itw_files, itw_labels = load_inthe_wild_test(args.itw_test_root)
-    itw_dataset = SimpleAudioDataset(itw_files, itw_labels, "InTheWild Test")
-    itw_loader = torch.utils.data.DataLoader(itw_dataset, batch_size=BATCH_SIZE, num_workers=8)
-    eval_sets.append(("InTheWild Test", itw_loader, itw_labels, None))
+    # Always in Mode 1, 2, 5: InTheWild Test
+    if eval_mode in (1, 2, 5):
+        print("  InTheWild Test:")
+        itw_files, itw_labels = load_inthe_wild_test(args.itw_test_root)
+        itw_dataset = SimpleAudioDataset(itw_files, itw_labels, "InTheWild Test")
+        itw_loader = torch.utils.data.DataLoader(itw_dataset, batch_size=BATCH_SIZE, num_workers=8)
+        eval_sets.append(("InTheWild Test", itw_loader, itw_labels, None))
+    
+    # LibriSpeech: Mode 3 or 5
+    if eval_mode in (3, 5):
+        print("  LibriSpeech (FPR Check):")
+        libri_files, libri_labels = load_librispeech_eval(args.libri_root)
+        libri_dataset = SimpleAudioDataset(libri_files, libri_labels, "LibriSpeech")
+        libri_loader = torch.utils.data.DataLoader(libri_dataset, batch_size=BATCH_SIZE, num_workers=8)
+        eval_sets.append(("LibriSpeech", libri_loader, libri_labels, None))
+
+    # WaveFake: Mode 4 or 5
+    if eval_mode in (4, 5):
+        print("  WaveFake Test:")
+        wf_files, wf_labels = load_wavefake_eval(args.wavefake_root)
+        wf_dataset = SimpleAudioDataset(wf_files, wf_labels, "WaveFake")
+        wf_loader = torch.utils.data.DataLoader(wf_dataset, batch_size=BATCH_SIZE, num_workers=8)
+        eval_sets.append(("WaveFake", wf_loader, wf_labels, None))
     
     # ── Evaluate ──
     print("\nEvaluating...\n")
@@ -698,7 +807,8 @@ def main():
             'tpr': metrics['tpr'].tolist(),
             'y_true': y_true.tolist(),
             'y_score': y_score.tolist(),
-            'y_pred': metrics['y_pred'].tolist()
+            'y_pred': metrics['y_pred'].tolist(),
+            'per_attack': asv_eval_attacks if dataset_name == "ASVspoof Eval" else None
         }
         
         print(f"  {dataset_name}:")
