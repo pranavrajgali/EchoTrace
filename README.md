@@ -4,7 +4,7 @@
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 *   **Dual-Stream Fusion Analysis**: Combines spectral texture (Vision Stream) with biometric physics (8-Dimensional Scalar Vector Stream).
 *   **Explainable AI Layer**: Uses **SHAP (DeepExplainer)** to generate mathematical feature attributions, paired with **LLM Forensic Reasoning** (via LLaMA 3.1 8B) for plain-English analysis reports.
@@ -15,7 +15,7 @@
 
 ---
 
-## 📊 Performance & Evaluation
+## Performance & Evaluation
 
 EchoTrace is trained and validated on a massive, balanced corpus of **220,380 samples**:
 *   **ASVspoof 2019**: 25,380 samples (Laboratory attacks)
@@ -33,7 +33,7 @@ EchoTrace is trained and validated on a massive, balanced corpus of **220,380 sa
 
 ---
 
-## ⚙️ Technical Architecture
+## Technical Architecture
 
 EchoTrace treats deepfake detection as a hybrid Computer Vision and biological Resonant Physics problem.
 
@@ -56,7 +56,7 @@ We extract physical features that capture the unique biological fingerprint of a
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 1. **Clone the Repository**
    ```bash
@@ -83,7 +83,7 @@ We extract physical features that capture the unique biological fingerprint of a
 
 ---
 
-## 🎙️ Usage
+## Usage
 
 ### Interactive Web Dashboard (Streamlit)
 The primary interface for uploading audio, live recording, and viewing SHAP explanations.
@@ -105,7 +105,7 @@ python tests/single_example_report_generator.py
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 ```text
 .
 ├── streamlit_app.py         # Main Web Application UI

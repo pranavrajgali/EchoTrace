@@ -15,11 +15,10 @@ GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL    = "llama-3.1-8b-instant"
 GROQ_URL      = "https://api.groq.com/openai/v1/chat/completions"
 
-OLLAMA_MODEL  = "llama3.2:3b"
+OLLAMA_MODEL  = "llama3.1:8b"
 OLLAMA_URL    = "http://localhost:11434/api/generate"
-
-LLM_BACKEND   = os.getenv("LLM_BACKEND", "groq").lower()
-TIMEOUT       = 30
+LLM_BACKEND   = "groq"
+TIMEOUT       = 180
 
 # Per-feature forensic metadata: (name, susp_if_low, susp_if_high, forensic_note)
 _FEATURE_META = [

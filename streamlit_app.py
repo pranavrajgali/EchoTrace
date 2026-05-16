@@ -815,7 +815,7 @@ def render_forensic_dashboard(res, container):
             <div class="reveal-card">
                 <div class="section-label" style="margin-top:2rem">Forensic Analysis · LLM Report</div>
                 <div style="background:#111113;border:1px solid #1E1E20;padding:1.5rem 1.75rem;border-radius:4px;border-left:2px solid #5A5A5E;">
-                    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;margin-bottom:1rem;letter-spacing:0.12em;">// Generated · llama-3.1-8b-instant</div>
+                    <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;margin-bottom:1rem;letter-spacing:0.12em;">// Generated · llama3.1:8b (Local Ollama)</div>
                     <div style="color:#C8C5BF;font-family:'DM Sans',sans-serif;font-size:0.9rem;line-height:1.8;">
                         {_llm_html}
                     </div>
@@ -854,9 +854,9 @@ def render_forensic_dashboard(res, container):
             for i in range(3):
                 card = res["channel_cards"][i]
                 with ch_cols[i]:
-                    st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
-                        {ch_meta[i][0]} <span style="float:right;color:#1E1E20;">{ch_meta[i][2]}</span><br>
-                        <span style="color:#3DBA7A;font-size:0.65rem;">{ch_meta[i][1]}</span>
+                    st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.8rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
+                        {ch_meta[i][0]} <span style="float:right;color:#3A3A3E;font-size:0.7rem;">{ch_meta[i][2]}</span><br>
+                        <span style="color:#3DBA7A;font-size:1.0rem;font-weight:600;">{ch_meta[i][1]}</span>
                     </div>""", unsafe_allow_html=True)
                     c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
                     st.image(c_img, use_container_width=True)

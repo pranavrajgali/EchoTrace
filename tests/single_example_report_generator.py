@@ -372,7 +372,7 @@ def generate_html_report(
 
   <div class="section-label">Forensic Analysis · LLM Report</div>
   <div class="llm-report">
-    <div class="llm-tag">// Generated · llama-3.1-8b-instant</div>
+    <div class="llm-tag">// Generated · llama3.1:8b (Local Ollama)</div>
     <div class="llm-text">{llm_text}</div>
   </div>
 
