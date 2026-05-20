@@ -27,7 +27,6 @@ EchoTrace is trained and validated on a massive, balanced corpus of **220,380 sa
 | Dataset | EER | ROC-AUC | Balanced Accuracy |
 | :--- | :--- | :--- | :--- |
 | **ASVspoof 2019 Dev** | 0.73% | 0.9997 | 98.65% |
-| **ASVspoof 2019 Eval** | 12.15% | 0.9515 | 82.77% |
 | **InTheWild Test** | 0.84% | 0.9985 | 99.30% |
 
 *Note: EchoTrace prioritizes "Physical Consistency" over lab-specific watermarks, making it significantly more robust to real-world, compressed, and noisy audio.*
