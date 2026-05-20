@@ -1,4 +1,4 @@
-# EchoTrace | Deepfake Audio Detection & Forensics
+# EchoTrace | Forensic Deepfake Audio Detector
 
 **EchoTrace** is an audio analysis tool designed to detect synthetic speech and AI-generated voice clones. Developed as a student project by the **BackProp Bandits**, this tool leverages a Dual-Stream Fusion Model combining a fine-tuned ResNet-50 vision backbone and a Biometric Multilayer Perceptron. Our approach identifies subtle artifacts in the spectral domain and physical vocal tract anomalies.
 
@@ -8,7 +8,6 @@
 
 *   **Dual-Stream Fusion Analysis**: Combines spectral texture (Vision Stream) with biometric physics (8-Dimensional Scalar Vector Stream).
 *   **Explainable AI Layer**: Uses **SHAP (DeepExplainer)** to generate mathematical feature attributions, paired with **LLM Forensic Reasoning** (via LLaMA 3.1 8B) for plain-English analysis reports.
-*   **5-Mode Developer Audit Suite**: High-performance server evaluation tool for benchmarking across ASVspoof, In-The-Wild, LibriSpeech, and WaveFake datasets.
 *   **Sliding-Window Ensemble**: Moves a 2-second window with 500ms overlap to identify localized spoofing artifacts in long recordings.
 *   **Forensic Report Generation**: High-resolution spectral analysis reports including time-domain waveforms, 3-channel forensic images, and Grad-CAM heatmaps.
 *   **Hardware-Optimized Training**: Built on a 4-GPU Distributed Data Parallel (DDP) pipeline with Automatic Mixed Precision (AMP) and SyncBatchNorm.
@@ -89,12 +88,6 @@ We extract physical features that capture the unique biological fingerprint of a
 The primary interface for uploading audio, live recording, and viewing SHAP explanations.
 ```bash
 streamlit run streamlit_app.py
-```
-
-### High-Performance Audit (Server)
-Run the 5-mode stress test to benchmark the model against all forensic datasets (ASVspoof, In-The-Wild, WaveFake, LibriSpeech):
-```bash
-python scripts/evaluate_server.py --checkpoint ensemble_model.pth --mode 5
 ```
 
 ### Automated Forensic Reports
