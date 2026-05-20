@@ -1,6 +1,6 @@
-# EchoTrace | State-of-the-Art Deepfake Audio Forensics
+# EchoTrace | Deepfake Audio Detection & Forensics
 
-**EchoTrace** is a forensic-grade audio analysis suite designed to detect synthetic speech and AI-generated voice clones with high precision. Built by the **BackProp Bandits**, this tool leverages a Dual-Stream Fusion Model combining a fine-tuned ResNet-50 vision backbone and a Biometric Multilayer Perceptron. Our approach identifies subtle artifacts in the spectral domain and physical vocal tract anomalies that are invisible to the human ear.
+**EchoTrace** is an audio analysis tool designed to detect synthetic speech and AI-generated voice clones. Developed as a student project by the **BackProp Bandits**, this tool leverages a Dual-Stream Fusion Model combining a fine-tuned ResNet-50 vision backbone and a Biometric Multilayer Perceptron. Our approach identifies subtle artifacts in the spectral domain and physical vocal tract anomalies.
 
 ---
 
@@ -26,8 +26,9 @@ EchoTrace is trained and validated on a massive, balanced corpus of **220,380 sa
 ### Benchmarks
 | Dataset | EER | ROC-AUC | Balanced Accuracy |
 | :--- | :--- | :--- | :--- |
-| **ASVspoof 2019 Dev** | 1.22% | 0.9994 | 98.29% |
-| **In-The-Wild Test** | **0.86%** | **0.9992** | **99.24%** |
+| **ASVspoof 2019 Dev** | 0.73% | 0.9997 | 98.65% |
+| **ASVspoof 2019 Eval** | 12.15% | 0.9515 | 82.77% |
+| **InTheWild Test** | 0.84% | 0.9985 | 99.30% |
 
 *Note: EchoTrace prioritizes "Physical Consistency" over lab-specific watermarks, making it significantly more robust to real-world, compressed, and noisy audio.*
 
