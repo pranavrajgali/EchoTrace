@@ -454,7 +454,7 @@ st.markdown("""
     }
 
     .verdict-result-fake { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #E8443A !important; line-height: 1; margin-bottom: 0.75rem; }
-    .verdict-result-real { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #3DBA7A !important; line-height: 1; margin-bottom: 0.75rem; }
+    .verdict-result-real { font-family: 'Bebas Neue', sans-serif; font-size: 3rem; letter-spacing: 0.06em; color: #32A882 !important; line-height: 1; margin-bottom: 0.75rem; }
 
     .verdict-confidence { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: #5A5A5E; border-top: 1px solid #1E1E20; padding-top: 0.75rem; margin-top: 0.75rem; }
     .verdict-confidence span { color: #C8C5BF !important; font-weight: 700; }
@@ -502,7 +502,7 @@ st.markdown("""
 
 
 # ─── Confidence Timeline ─────────────────────────────────────
-def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.5):
+def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.5, progress_callback=None):
     """
     Slice audio into overlapping windows, run inference on each,
     return list of (timestamp, confidence, verdict) tuples.
@@ -523,7 +523,9 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
     total_samples = len(audio_np)
     starts = list(range(0, max(1, total_samples - WINDOW + 1), HOP))
 
-    for start in starts:
+    for i, start in enumerate(starts):
+        if progress_callback:
+            progress_callback(i + 1, len(starts))
         chunk = audio_np[start:start + WINDOW]
         if len(chunk) < WINDOW:
             chunk = np.pad(chunk, (0, WINDOW - len(chunk)))
@@ -542,7 +544,7 @@ def compute_confidence_timeline(audio_np: np.ndarray, window_sec=2.0, hop_sec=0.
             prob = torch.sigmoid(output).item()
 
         timestamp = start / SR
-        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.5 else "BONAFIDE"))
+        results.append((round(timestamp, 2), round(prob, 4), "SPOOF" if prob > 0.88 else "BONAFIDE"))
 
     return results
 
@@ -577,7 +579,7 @@ def render_confidence_timeline(audio_np, existing_points=None, container=None):
     labels = [p[2] for p in points]
 
     # Color each point
-    colors = ["#E8443A" if l == "SPOOF" else "#3DBA7A" for l in labels]
+    colors = ["#E8443A" if l == "SPOOF" else "#32A882" for l in labels]
 
     fig = go.Figure()
 
@@ -684,7 +686,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
             <div style="background:#111113;border:1px solid #1E1E20;border-radius:4px;padding:1rem 1.25rem 0.5rem;margin-bottom:0.75rem;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
                     <div>
-                        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#3DBA7A;font-weight:700;letter-spacing:0.05em;margin-bottom:0.25rem;">WHICH VOICE PROPERTY GAVE IT AWAY?</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#32A882;font-weight:700;letter-spacing:0.05em;margin-bottom:0.25rem;">WHICH VOICE PROPERTY GAVE IT AWAY?</div>
                         <div style="font-family:'DM Sans',sans-serif;font-size:0.72rem;color:#5A5A5E;max-width:420px;line-height:1.5;">SHAP values show each scalar feature's individual contribution to the verdict. Red bars push toward SPOOF. Green bars push toward BONAFIDE.</div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;margin-left:1rem;">
@@ -692,7 +694,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
                             <div style="width:14px;height:8px;background:rgba(232,68,58,0.75);border-radius:1px;"></div>Pushes toward SPOOF
                         </div>
                         <div style="display:flex;align-items:center;gap:0.4rem;font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;">
-                            <div style="width:14px;height:8px;background:rgba(61,186,122,0.65);border-radius:1px;"></div>Pushes toward BONAFIDE
+                            <div style="width:14px;height:8px;background:rgba(50,168,130,0.65);border-radius:1px;"></div>Pushes toward BONAFIDE
                         </div>
                     </div>
                 </div>
@@ -701,7 +703,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
 
         # Baseline / model output endpoints row
         conf_val = raw_prob if is_fake else (1.0 - raw_prob)
-        endpoint_color = "#E8443A" if is_fake else "#3DBA7A"
+        endpoint_color = "#E8443A" if is_fake else "#32A882"
         container.markdown(f"""
             <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;padding:0.5rem 0;border-bottom:1px solid #1E1E20;margin-bottom:4px;">
                 <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:#3A3A3E;text-align:right;">Baseline (avg)</div>
@@ -715,8 +717,8 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
         for d in shap_data:
             is_pos = d['val'] >= 0
             pct = (abs(d['val']) / max_abs) * 46
-            color = "rgba(232,68,58,0.75)" if is_pos else "rgba(61,186,122,0.65)"
-            val_color = "#E8443A" if is_pos else "#3DBA7A"
+            color = "rgba(232,68,58,0.75)" if is_pos else "rgba(50,168,130,0.65)"
+            val_color = "#E8443A" if is_pos else "#32A882"
             container.markdown(f"""
                 <div style="display:grid;grid-template-columns:140px 1fr 70px;align-items:center;gap:12px;margin-bottom:6px;">
                     <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8A8A90;text-align:right;">{d['feat']}</div>
@@ -731,8 +733,8 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
         # Final Output row
         out_fill_pct = ((raw_prob - 0.5) / 0.5) * 46 if is_fake else ((0.5 - raw_prob) / 0.5) * 46
         out_fill_pct = max(0, min(46, out_fill_pct))
-        out_color = "#E8443A" if is_fake else "#3DBA7A"
-        out_fill_bg = "rgba(232,68,58,0.75)" if is_fake else "rgba(61,186,122,0.65)"
+        out_color = "#E8443A" if is_fake else "#32A882"
+        out_fill_bg = "rgba(232,68,58,0.75)" if is_fake else "rgba(50,168,130,0.65)"
         out_val = f"{raw_prob:.3f}" if is_fake else f"{1-raw_prob:.3f}"
 
         container.markdown(f"""
@@ -741,7 +743,7 @@ def render_shap_attribution(shap_data, raw_prob, is_fake, container):
                 <div style="position:relative;height:24px;background:#111113;border-radius:2px;overflow:hidden;">
                     <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1E1E20;z-index:1;"></div>
                     <div style="position:absolute;{'left' if is_fake else 'right'}:50%;top:4px;bottom:4px;width:{out_fill_pct:.1f}%;background:{out_fill_bg};border-radius:1px;"></div>
-                    <div style="position:absolute;{'right:4px' if is_fake else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'Space Mono',monospace;font-size:7px;color:#3DBA7A;opacity:0.6;letter-spacing:0.08em;white-space:nowrap;">{'← BONAFIDE' if is_fake else 'SPOOF →'}</div>
+                    <div style="position:absolute;{'right:4px' if is_fake else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'Space Mono',monospace;font-size:7px;color:#32A882;opacity:0.6;letter-spacing:0.08em;white-space:nowrap;">{'← BONAFIDE' if is_fake else 'SPOOF →'}</div>
                 </div>
                 <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:{out_color};font-weight:700;text-align:right;">{out_val}</div>
             </div>
@@ -779,7 +781,6 @@ def render_forensic_dashboard(res, container):
         # 1. Verdict Banner (Shows immediately or first)
         verdict_placeholder = container.empty()
         conf_val   = raw_prob if is_fake else (1.0 - raw_prob)
-        flagged_pct = int(min(99, max(1, conf_val * 85)))
         verdict_placeholder.markdown(f"""
             <div class="reveal-card verdict-wrap">
                 <div class="verdict-eyebrow">EchoTrace Verdict</div>
@@ -787,7 +788,6 @@ def render_forensic_dashboard(res, container):
                 <div class="{verdict_cls}">{verdict_label}</div>
                 <div class="verdict-confidence">
                     Confidence Score &nbsp;·&nbsp; <span>{confidence_str}</span>
-                    <div style="font-size:0.65rem;color:#3A3A3E;margin-top:2px;">(Probability: {raw_prob:.4f})</div>
                 </div>
                 <div style="display:flex;gap:1.5rem;margin-top:1.25rem;padding-top:1rem;border-top:1px solid #1E1E20;">
                     <div style="text-align:center;">
@@ -796,11 +796,11 @@ def render_forensic_dashboard(res, container):
                     </div>
                     <div style="text-align:center;">
                         <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">{raw_prob:.3f}</div>
-                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Raw Prob</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Calibrated Prob</div>
                     </div>
                     <div style="text-align:center;">
-                        <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">{flagged_pct}%</div>
-                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Windows Flagged</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:1rem;color:#F0EDE8;font-weight:700;">Dual-Stream</div>
+                        <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#5A5A5E;text-transform:uppercase;letter-spacing:0.12em;">Fusion Mode</div>
                     </div>
                 </div>
             </div>
@@ -856,7 +856,7 @@ def render_forensic_dashboard(res, container):
                 with ch_cols[i]:
                     st.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:0.8rem;color:#5A5A5E;letter-spacing:1px;margin-bottom:4px;">
                         {ch_meta[i][0]} <span style="float:right;color:#3A3A3E;font-size:0.7rem;">{ch_meta[i][2]}</span><br>
-                        <span style="color:#3DBA7A;font-size:1.0rem;font-weight:600;">{ch_meta[i][1]}</span>
+                        <span style="color:#F0EDE8;font-size:1.0rem;font-weight:600;">{ch_meta[i][1]}</span>
                     </div>""", unsafe_allow_html=True)
                     c_img = (cmaps[i](feat_img[:, :, i] / 255.0)[:, :, :3] * 255).astype(np.uint8)
                     st.image(c_img, use_container_width=True)
@@ -878,8 +878,8 @@ def render_forensic_dashboard(res, container):
                 name  = SCALAR_NAMES[i]
                 susp  = _is_suspicious(i, val)
                 status_txt = _status_text(res["scalar_cards"][i], i, val, susp)
-                color  = "#E8443A" if susp else "#3DBA7A"
-                bg     = "rgba(232,68,58,0.04)" if susp else "rgba(61,186,122,0.04)"
+                color  = "#E8443A" if susp else "#32A882"
+                bg     = "rgba(232,68,58,0.04)" if susp else "rgba(50,168,130,0.04)"
                 border = "rgba(232,68,58,0.4)"  if susp else "#1E1E20"
                 sc_cols[i % 4].markdown(f"""
                     <div style="background:{bg};border:1px solid {border};border-radius:4px;padding:0.8rem;margin-bottom:0.8rem;min-height:100px;">
@@ -946,26 +946,58 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
         os.write(fd, audio_bytes)
         os.close(fd)
 
-        progress_bar = ctx.progress(0)
-        status = ctx.empty()
-        status.markdown(
-            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#5A5A5E;letter-spacing:0.12em;text-align:center;margin-top:0.75rem;'>"
-            "Deep learning core online. Identifying synthetic artifacts…</p>",
-            unsafe_allow_html=True,
-        )
+        loading_container = ctx.empty()
 
-        for i in range(100):
-            time.sleep(0.005)
-            progress_bar.progress(i + 1)
+        # ── One-shot autoscroll: scrolls to the bottom where the
+        #    loading buffer renders, then releases immediately.
+        import streamlit.components.v1 as _stc
+        _stc.html("""
+        <script>
+        (function() {
+            setTimeout(function() {
+                var doc = window.parent.document;
+                var scrollEl = doc.scrollingElement || doc.documentElement || doc.body;
+                scrollEl.scrollTo({
+                    top: scrollEl.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 150);
+        })();
+        </script>
+        """, height=0)
 
-        # 1. Timeline Inference
-        status.markdown(
-            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[1/3] Running Neural Timeline Analysis…</p>",
-            unsafe_allow_html=True,
-        )
-        timeline_points = compute_confidence_timeline(audio_np)
+        def update_loading(phase_text, phase_color, target_pct):
+            loading_container.markdown(f"""
+            <div style="text-align:center;padding:2rem 1rem;">
+                <div style="width:100%;max-width:500px;margin:0 auto;">
+                    <div style="background:#0A0A0B;border:1px solid #1E1E20;border-radius:2px;height:3px;overflow:hidden;">
+                        <div style="width:{target_pct}%;height:100%;background:linear-gradient(90deg,#E8443A,#32A882);transition:width 0.4s ease;"></div>
+                    </div>
+                </div>
+                <div style="font-family:'Space Mono',monospace;font-size:0.68rem;color:{phase_color};letter-spacing:0.12em;margin-top:1rem;">{phase_text}...</div>
+                <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#2A2A2E;letter-spacing:0.1em;margin-top:0.5rem;">{target_pct}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        update_loading("Initializing ResNet-50 V4 inference core", "#5A5A5E", 10)
+        
+        # Ensure model is initialized
+        global model
+        try:
+            model.eval()
+        except NameError:
+            from core.inference import model as inference_model
+            model = inference_model
+ 
+        update_loading("Loading DDP-Ensemble weights into VRAM", "#5A5A5E", 20)
+ 
+        # Timeline Callback for real-time progress updates
+        def timeline_callback(curr, total):
+            pct = 20 + int(50 * (curr / total))
+            update_loading(f"Running neural timeline analysis [window {curr}/{total}]", "#32A882", pct)
+ 
+        timeline_points = compute_confidence_timeline(audio_np, progress_callback=timeline_callback)
+        
         # Calculate stats for the summary report without rendering the UI yet
         _temp_confs = [p[1] for p in timeline_points]
         _temp_times = [p[0] for p in timeline_points]
@@ -979,28 +1011,11 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             "peak_timestamp": peak_time,
             "peak_confidence": peak_conf * 100
         }
-
-        # 2. Global Feature Extraction — use the PEAK WINDOW from the timeline
-        #    instead of always the first 4 seconds, so scalars and spectral
-        #    channels reflect the most suspicious region of the recording.
-        status.markdown(
-            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[2/3] Extracting 8-Dim Forensic Vector…</p>",
-            unsafe_allow_html=True,
-        )
+ 
+        update_loading("Extracting 8-Dim Forensic Vector & Spectrogram", "#32A882", 80)
         SR = 16000
         ANALYSIS_LEN = SR * 4  # 4 seconds = 64000 samples
-        if len(timeline_points) > 0 and peak_time > 0:
-            # Center a 4-second window on the peak timestamp
-            peak_sample = int(peak_time * SR)
-            start = max(0, peak_sample - ANALYSIS_LEN // 2)
-            end = start + ANALYSIS_LEN
-            if end > len(audio_np):
-                end = len(audio_np)
-                start = max(0, end - ANALYSIS_LEN)
-            analysis_chunk = audio_np[start:end]
-        else:
-            analysis_chunk = audio_np[:ANALYSIS_LEN]
+        analysis_chunk = audio_np[:ANALYSIS_LEN]
         # Pad if audio is shorter than 4 seconds
         if len(analysis_chunk) < ANALYSIS_LEN:
             analysis_chunk = np.pad(analysis_chunk, (0, ANALYSIS_LEN - len(analysis_chunk)), mode='reflect')
@@ -1009,47 +1024,14 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
         from core.preprocess import build_feature_image
         feat_img = build_feature_image(analysis_chunk, sr=SR)
 
-        # 3. Main Forensic Report (Parallel LLM Consultation)
-        status.markdown(
-            "<p style='font-family:Space Mono,monospace;font-size:0.72rem;"
-            "color:#3DBA7A;letter-spacing:0.12em;text-align:center;'>[3/3] Consulting LLM & Generating Artifacts…</p>",
-            unsafe_allow_html=True,
-        )
-        # Derive final verdict from full-recording timeline using softmax-weighted averaging.
-        # This ensures every sliding window contributes to the verdict, with high-confidence
-        # spoof windows weighted exponentially more than low-confidence ones.
-        if len(timeline_points) > 0:
-            # ── CALIBRATION FIX ──
-            # 1. Filter out 'noise floor' windows (very low prob) that often 
-            #    represent silence or non-speech artifacts.
-            valid_probs = np.array([p[1] for p in timeline_points if p[1] > 0.15])
-            
-            if len(valid_probs) > 0:
-                # 2. Softmax weighting with high temperature for stability
-                weights = np.exp(valid_probs / 2.5)
-                weights = weights / weights.sum()
-                
-                # 3. Weighted average (no calibration offset — keep consistent with eval pipeline)
-                raw_final = float(np.dot(weights, valid_probs))
-                final_prob = max(0.0, min(1.0, raw_final))
-            else:
-                final_prob = 0.0 # Purely clean/silent
-                
-            verdict = "SPOOF" if final_prob > 0.5 else "BONAFIDE"
-            confidence = final_prob if verdict == "SPOOF" else 1.0 - final_prob
-            analysis_result = {
-                "result": verdict,
-                "confidence": f"{confidence:.2%}",
-                "raw_prob": final_prob,
-                "heatmap": "",
-            }
-        else:
-            # Fallback: no timeline data, use single-shot inference on first 4s
-            from core.inference import run_inference
-            with open(tmp_path, "rb") as f:
-                file_bytes = f.read()
-            analysis_result = asyncio.run(run_inference(file_bytes))
+        update_loading("Running global deepfake classifier", "#E8443A", 90)
+        # Always run single-shot inference on the first 4s of the audio clip
+        from core.inference import run_inference
+        with open(tmp_path, "rb") as f:
+            file_bytes = f.read()
+        analysis_result = asyncio.run(run_inference(file_bytes))
         
+        update_loading("Consulting LLaMA-3.1-8B & generating artifacts", "#E8443A", 98)
         precomputed = {
             "audio_np": analysis_chunk,
             "feature_image": feat_img,
@@ -1064,8 +1046,7 @@ def run_analysis(audio_bytes: bytes, suffix: str, source_label: str, original_fi
             precomputed=precomputed
         )
 
-        status.empty()
-        progress_bar.empty()
+        loading_container.empty()
         if report_path and os.path.exists(report_path):
             verdict = analysis_result.get("result", "UNKNOWN")
             is_fake = verdict != "BONAFIDE"
@@ -1148,7 +1129,7 @@ with col:
                 <div class="stat-key">Physics Scalars</div>
             </div>
             <div class="stat-pill">
-                <div class="stat-val">300k+</div>
+                <div class="stat-val">140K</div>
                 <div class="stat-key">Training Clips</div>
             </div>
         </div>
@@ -1164,26 +1145,32 @@ with col:
         if uploaded_file is not None:
             # Preview player for uploaded file
             st.markdown('<div class="section-label" style="margin-top:1rem">Preview</div>', unsafe_allow_html=True)
-            import base64
+            import hashlib, tempfile
             file_bytes = uploaded_file.getvalue()
             suffix = pathlib.Path(uploaded_file.name).suffix.lower()
+
             try:
+                # Convert to WAV for maximum browser compatibility
                 if PYDUB_AVAILABLE:
                     seg = AudioSegment.from_file(io.BytesIO(file_bytes), format=suffix.strip("."))
-                    mp3_buf = io.BytesIO()
-                    seg.export(mp3_buf, format="mp3", bitrate="128k")
-                    b64 = base64.b64encode(mp3_buf.getvalue()).decode("utf-8")
-                    mime = "audio/mpeg"
+                    wav_buf = io.BytesIO()
+                    seg.export(wav_buf, format="wav")
+                    play_bytes = wav_buf.getvalue()
+                    play_ext = ".wav"
+                    play_mime = "audio/wav"
                 else:
-                    b64 = base64.b64encode(file_bytes).decode("utf-8")
-                    mime = "audio/mpeg" if suffix == ".mp3" else "audio/wav"
-            except Exception:
-                b64 = base64.b64encode(file_bytes).decode("utf-8")
-                mime = "audio/mpeg" if suffix == ".mp3" else "audio/wav"
+                    play_bytes = file_bytes
+                    play_ext = suffix
+                    play_mime = "audio/mpeg" if suffix == ".mp3" else "audio/wav"
 
-            import hashlib
+                with tempfile.NamedTemporaryFile(delete=False, suffix=play_ext) as tmp:
+                    tmp.write(play_bytes)
+                    tmp_path = tmp.name
+                st.audio(tmp_path, format=play_mime)
+            except Exception as e:
+                st.warning(f"Preview unavailable: {e}")
+
             file_hash = hashlib.md5(file_bytes).hexdigest()[:8]
-            st.audio(file_bytes, format=mime)
 
             # Static waveform for uploaded file
             st.markdown('<div class="section-label" style="margin-top:1rem">Waveform</div>', unsafe_allow_html=True)
@@ -1444,27 +1431,27 @@ with col:
                 except Exception as e:
                     st.caption(f"Waveform unavailable: {e}")
 
-                # Audio player
+                # Audio player — write to temp file so browser gets proper range headers
                 st.markdown('<div class="section-label" style="margin-top:1rem">Preview Recording</div>', unsafe_allow_html=True)
-                import base64
+                import hashlib, tempfile
+
                 try:
                     if PYDUB_AVAILABLE:
                         seg = AudioSegment.from_file(io.BytesIO(raw), format="wav")
-                        mp3_buf = io.BytesIO()
-                        seg.export(mp3_buf, format="mp3", bitrate="128k")
-                        mp3_bytes = mp3_buf.getvalue()
-                        b64 = base64.b64encode(mp3_bytes).decode("utf-8")
-                        mime = "audio/mpeg"
+                        wav_buf = io.BytesIO()
+                        seg.export(wav_buf, format="wav")
+                        play_bytes = wav_buf.getvalue()
                     else:
-                        b64 = base64.b64encode(raw).decode("utf-8")
-                        mime = "audio/wav"
-                except Exception:
-                    b64 = base64.b64encode(raw).decode("utf-8")
-                    mime = "audio/wav"
+                        play_bytes = raw
 
-                import hashlib
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                        tmp.write(play_bytes)
+                        tmp_path = tmp.name
+                    st.audio(tmp_path, format="audio/wav")
+                except Exception as e:
+                    st.warning(f"Preview unavailable: {e}")
+
                 mic_hash = hashlib.md5(raw).hexdigest()[:8]
-                st.audio(raw, format=mime)
 
                 col_rerecord, col_analyze = st.columns([1, 2])
                 with col_rerecord:

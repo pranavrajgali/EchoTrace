@@ -159,7 +159,7 @@ def generate_html_report(
     is_spoof   = verdict == "SPOOF"
     conf_pct   = raw_prob * 100 if is_spoof else (1 - raw_prob) * 100
     verdict_display = "AI-GENERATED (SPOOF)" if is_spoof else "AUTHENTIC (BONAFIDE)"
-    verdict_color   = "#E8443A" if is_spoof else "#3DBA7A"
+    verdict_color   = "#E8443A" if is_spoof else "#32A882"
     flagged_pct     = int(min(99, max(1, conf_pct * 0.85)))
     peak_anomaly    = 2.14
 
@@ -211,7 +211,7 @@ def generate_html_report(
 
     out_fill_pct   = ((raw_prob - 0.50) / 0.50) * 46 if is_spoof else ((0.5 - raw_prob) / 0.50) * 46
     out_fill_pct   = max(0, min(46, out_fill_pct))
-    out_fill_color = "#E8443A" if is_spoof else "#3DBA7A"
+    out_fill_color = "#E8443A" if is_spoof else "#32A882"
     out_val_disp   = f"{raw_prob:.3f}" if is_spoof else f"{1-raw_prob:.3f}"
 
     # ── Channel cards HTML ─────────────────────────────────────
@@ -250,7 +250,7 @@ def generate_html_report(
     --border:#222226;--border2:#2E2E34;
     --red:#E8443A;--red-dim:rgba(232,68,58,0.12);
     --accent:{verdict_color};
-    --green:#3DBA7A;--green-dim:rgba(61,186,122,0.12);
+    --green:#32A882;--green-dim:rgba(50,168,130,0.12);
     --text-primary:#F0EDE8;--text-secondary:#8A8A90;--text-dim:#3E3E44;
     --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
   }}
@@ -404,7 +404,7 @@ def generate_html_report(
         <div class="shap-total-label">Final output</div>
         <div class="shap-output-bar">
           <div class="shap-output-fill" style="width:{out_fill_pct:.1f}%;background:{out_fill_color};"></div>
-          <div style="position:absolute;{'right:4px' if is_spoof else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'IBM Plex Mono',monospace;font-size:7px;color:#3DBA7A;opacity:0.6;letter-spacing:0.08em;">{'SPOOF \u2192' if is_spoof else '\u2190 BONAFIDE'}</div>
+          <div style="position:absolute;{'right:4px' if is_spoof else 'left:4px'};top:50%;transform:translateY(-50%);font-family:'IBM Plex Mono',monospace;font-size:7px;color:#32A882;opacity:0.6;letter-spacing:0.08em;">{'SPOOF \u2192' if is_spoof else '\u2190 BONAFIDE'}</div>
         </div>
         <div class="shap-output-val" style="color:{out_fill_color}">{out_val_disp}</div>
       </div>
